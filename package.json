@@ -1,0 +1,17 @@
+{
+  "name": "weather-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-leaflet": "^0.1.0",
+    "leaflet": "^1.9.4",
+    "vite": "^6.0.0"
+  },
+  "devDependencies": {}
+}
