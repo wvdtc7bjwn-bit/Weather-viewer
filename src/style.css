@@ -1,0 +1,342 @@
+:root {
+  color-scheme: dark;
+  --bg: #050914;
+  --panel: #070d1a;
+  --panel-2: #111a2a;
+  --panel-3: #182235;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #f8fbff;
+  --muted: #9fb0c7;
+  --accent: #55c7ff;
+  --warning: #f4d35e;
+  --danger: #e63946;
+  --emergency: #8e24aa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans JP", "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+}
+
+#app {
+  display: flex;
+}
+
+#sidebar {
+  width: 330px;
+  height: 100vh;
+  padding: 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: linear-gradient(180deg, #070d1a 0%, #050914 100%);
+  border-right: 1px solid var(--line);
+  z-index: 20;
+}
+
+#sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.app-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 16px;
+}
+
+.app-title-main {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.app-title-sub {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.current-panel,
+.points-panel,
+.legend-panel {
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #1b2435 0%, #121a29 100%);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+
+.mode-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(85, 199, 255, 0.14);
+  color: #bcecff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 8px;
+  font-size: 25px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+h2 {
+  margin-bottom: 12px;
+  color: #dbe8ff;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+#panel-time {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.primary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  color: #06101f;
+  background: linear-gradient(180deg, #78d8ff 0%, #40aee5 100%);
+}
+
+.primary-card-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.primary-card strong {
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.amedas-card {
+  background: linear-gradient(180deg, #88f0a4 0%, #48c46b 100%);
+}
+
+.warnings-card {
+  background: linear-gradient(180deg, #f4d35e 0%, #d99b25 100%);
+}
+
+.typhoon-card {
+  background: linear-gradient(180deg, #d5a6ff 0%, #8e57e8 100%);
+  color: white;
+}
+
+.panel-description {
+  white-space: pre-line;
+  color: #c9d6e8;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.detail-list,
+.legend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-item,
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #d8e6f7;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.legend-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  flex: none;
+}
+
+.legend-rain-low { background: #55c7ff; }
+.legend-rain-high { background: #e63946; }
+.legend-amedas { background: #48c46b; }
+.legend-advisory { background: var(--warning); }
+.legend-warning { background: var(--danger); }
+.legend-emergency { background: var(--emergency); }
+.legend-typhoon { background: #d5a6ff; }
+.legend-forecast { background: rgba(213, 166, 255, 0.35); }
+
+#map-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  background: #07101d;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+  background: #07101d;
+}
+
+.leaflet-container {
+  background: #07101d;
+  font-family: inherit;
+}
+
+.leaflet-tile {
+  filter: brightness(0.72) saturate(0.85) hue-rotate(185deg);
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #101827;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.leaflet-control-zoom a {
+  background: rgba(10, 17, 30, 0.92);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+#main-tabs {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(5, 9, 20, 0.74);
+  backdrop-filter: blur(16px);
+  z-index: 500;
+}
+
+.tab-button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: transparent;
+  color: #c8d8ec;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.tab-button.active {
+  background: #e8f7ff;
+  color: #06101f;
+  box-shadow: 0 8px 24px rgba(85, 199, 255, 0.25);
+}
+
+#clock,
+#map-attribution {
+  position: absolute;
+  right: 18px;
+  z-index: 450;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(5, 9, 20, 0.68);
+  color: #d8e6f7;
+  font-size: 13px;
+  font-weight: 900;
+  backdrop-filter: blur(12px);
+}
+
+#clock {
+  top: 76px;
+}
+
+#map-attribution {
+  bottom: 16px;
+  font-size: 11px;
+  color: rgba(216, 230, 247, 0.72);
+}
+
+@media (max-width: 800px) {
+  #app {
+    flex-direction: column;
+  }
+
+  #sidebar {
+    width: 100%;
+    height: 42vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  #map-area {
+    height: 58vh;
+  }
+
+  #main-tabs {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    overflow-x: auto;
+    justify-content: flex-start;
+    border-radius: 18px;
+  }
+
+  .tab-button {
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 8px 11px;
+  }
+
+  #clock {
+    top: 64px;
+    right: 10px;
+  }
+
+  #map-attribution {
+    right: 10px;
+    bottom: 10px;
+  }
+}
