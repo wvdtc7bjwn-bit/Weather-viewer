@@ -23,6 +23,22 @@ npm install
 npm run dev
 ```
 
+## GitHub Pages へのデプロイ
+
+このアプリは GitHub Actions で `npm run build` を実行し、生成された `dist` を GitHub Pages に公開します。
+
+1. GitHub のリポジトリ設定で `Settings` → `Pages` を開く
+2. `Build and deployment` の `Source` を `GitHub Actions` にする
+3. `main` ブランチへ push する
+
+公開URLは通常、以下の形式になります。
+
+```text
+https://wvdtc7bjwn-bit.github.io/Weather-viewer/
+```
+
+GitHub Actions 上では Vite の `base` を `/Weather-viewer/` にしてビルドします。ローカル開発時はこれまで通り `/` で動作します。
+
 ## 次にやること
 
 1. 雨雲レーダーの実タイル表示

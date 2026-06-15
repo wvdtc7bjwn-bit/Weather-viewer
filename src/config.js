@@ -1,4 +1,9 @@
 export const APP_NAME = "Weather Viewer";
+export const APP_BASE_URL = import.meta.env.BASE_URL;
+
+function publicAsset(path) {
+  return `${APP_BASE_URL}${path.replace(/^\/+/, "")}`;
+}
 
 export const DEFAULT_VIEW = {
   center: [37.6, 137.8],
@@ -15,7 +20,7 @@ export const JMA_ENDPOINTS = {
   amedasTimeList: "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",
   warningsBase: "https://www.jma.go.jp/bosai/warning/data/r8",
   areaConst: "https://www.jma.go.jp/bosai/common/const/area.json",
-  warningMunicipalities: "/data/jma-weather-warning-municipalities.geojson",
+  warningMunicipalities: publicAsset("data/jma-weather-warning-municipalities.geojson"),
   amedasStationTable: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json",
   amedasMapBase: "https://www.jma.go.jp/bosai/amedas/data/map",
   typhoon: "https://www.jma.go.jp/bosai/typhoon/data/targetTc.json",

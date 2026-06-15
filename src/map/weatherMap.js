@@ -524,7 +524,7 @@ function createBaseStyle() {
       },
       [MUNICIPALITY_SOURCE_ID]: {
         type: "geojson",
-        data: "/data/jma-weather-warning-municipalities.geojson",
+        data: JMA_ENDPOINTS.warningMunicipalities,
         promoteId: "code"
       },
       [WARNING_SOURCE_ID]: {
