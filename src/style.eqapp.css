@@ -1,0 +1,249 @@
+:root {
+  color-scheme: dark;
+  --bg: #050914;
+  --panel: rgba(23, 32, 49, 0.96);
+  --panel-2: rgba(35, 47, 70, 0.92);
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #ffffff;
+  --muted: #aebbd0;
+  --blue: #52b1ef;
+  --warning: #f4d35e;
+  --danger: #e6453a;
+  --emergency: #8e24aa;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 370px 1fr;
+}
+
+#sidebar {
+  width: 370px;
+  height: 100vh;
+  padding: 22px 20px;
+  background: linear-gradient(180deg, rgba(26, 36, 56, 0.98) 0%, rgba(11, 17, 31, 0.98) 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 14px 0 34px rgba(0, 0, 0, 0.45);
+}
+
+#map-area {
+  height: 100vh;
+}
+
+.leaflet-tile {
+  filter: brightness(0.54) saturate(0.7) hue-rotate(185deg) contrast(1.1);
+}
+
+.leaflet-control-zoom { display: none; }
+
+.current-panel,
+.points-panel,
+.legend-panel {
+  margin-bottom: 18px;
+  padding: 22px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(31, 42, 64, 0.98) 0%, rgba(22, 31, 48, 0.98) 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
+}
+
+.mode-label {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #3d4b68 0%, #2b3853 100%);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+h1 {
+  font-size: clamp(34px, 4vw, 46px);
+  line-height: 1.16;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+#panel-time {
+  margin-bottom: 26px;
+  color: var(--muted);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.primary-card {
+  min-height: 96px;
+  padding: 18px 22px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #56b7f2 0%, #46a9e8 100%);
+}
+
+.primary-card-label {
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.08;
+}
+
+.primary-card strong {
+  font-size: 44px;
+  font-weight: 900;
+}
+
+.amedas-card { background: linear-gradient(180deg, #87eda7 0%, #43c36b 100%); }
+.warnings-card { background: linear-gradient(180deg, #ffd95c 0%, #e7ae30 100%); }
+.typhoon-card { background: linear-gradient(180deg, #d6a8ff 0%, #8253e7 100%); color: #fff; }
+
+#main-tabs {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: auto;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.tab-button {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0;
+  background: radial-gradient(circle at 35% 25%, rgba(255,255,255,0.34), rgba(255,255,255,0.08) 38%, rgba(10,16,28,0.8) 100%);
+  color: transparent;
+  font-size: 0;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.35), inset 0 0 0 2px rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+}
+
+.tab-button::before {
+  color: white;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.tab-button[data-tab="radar"]::before { content: "☔"; }
+.tab-button[data-tab="amedas"]::before { content: "⌁"; }
+.tab-button[data-tab="warnings"]::before { content: "△"; }
+.tab-button[data-tab="typhoon"]::before { content: "◎"; }
+
+.tab-button.active {
+  background: radial-gradient(circle at 35% 25%, rgba(255,255,255,0.48), rgba(97,124,170,0.5) 42%, rgba(22,30,48,0.88) 100%);
+  box-shadow: 0 0 0 2px rgba(143, 180, 255, 0.22), 0 12px 28px rgba(0,0,0,0.38);
+}
+
+#clock {
+  top: 24px;
+  right: 24px;
+  min-width: 190px;
+  padding: 14px 22px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.78);
+  font-size: 34px;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 800px) {
+  #app {
+    display: block;
+  }
+
+  #map-area {
+    width: 100%;
+    height: 100%;
+  }
+
+  #sidebar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 42vh;
+    min-height: 360px;
+    padding: 32px 16px 20px;
+    border-right: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 28px 28px 0 0;
+    background: rgba(9, 15, 29, 0.94);
+    box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.55);
+  }
+
+  #sidebar::before {
+    content: "";
+    position: absolute;
+    top: 13px;
+    left: 50%;
+    width: 82px;
+    height: 8px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #aab3c8;
+    box-shadow: 0 0 10px rgba(255,255,255,0.18);
+  }
+
+  .current-panel,
+  .points-panel,
+  .legend-panel {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .mode-label {
+    min-height: 52px;
+    margin-bottom: 28px;
+    font-size: 24px;
+  }
+
+  h1 {
+    font-size: 38px;
+  }
+
+  #panel-time {
+    font-size: 22px;
+  }
+
+  .primary-card {
+    min-height: 88px;
+  }
+
+  .primary-card strong {
+    font-size: 48px;
+  }
+
+  #main-tabs {
+    top: max(26px, env(safe-area-inset-top));
+    left: 16px;
+    gap: 12px;
+  }
+
+  .tab-button {
+    width: 64px;
+    height: 64px;
+  }
+
+  #clock {
+    top: max(28px, env(safe-area-inset-top));
+    right: 16px;
+    min-width: 178px;
+    padding: 12px 18px;
+    font-size: 32px;
+  }
+
+  #map-attribution {
+    display: none;
+  }
+}
