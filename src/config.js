@@ -23,11 +23,7 @@ export const JMA_ENDPOINTS = {
   warningMunicipalities: publicAsset("data/jma-weather-warning-municipalities.geojson"),
   amedasStationTable: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json",
   amedasMapBase: "https://www.jma.go.jp/bosai/amedas/data/map",
-  typhoon: "https://www.jma.go.jp/bosai/typhoon/data/targetTc.json",
-  xmlFeedRegular: "https://www.data.jma.go.jp/developer/xml/feed/regular.xml",
-  xmlFeedRegularLong: "https://www.data.jma.go.jp/developer/xml/feed/regular_l.xml",
-  xmlFeedExtra: "https://www.data.jma.go.jp/developer/xml/feed/extra.xml",
-  xmlFeedExtraLong: "https://www.data.jma.go.jp/developer/xml/feed/extra_l.xml"
+  typhoon: "https://www.jma.go.jp/bosai/typhoon/data/targetTc.json"
 };
 
 export const JMA_WARNING_OFFICE_CODES = [

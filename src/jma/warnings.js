@@ -1,12 +1,5 @@
-import { JMA_ENDPOINTS } from "../config.js";
+import { JMA_ENDPOINTS, JMA_WARNING_OFFICE_CODES } from "../config.js";
 import { fetchJson, parseJmaTime } from "./jmaClient.js";
-import {
-  attrOf,
-  childrenByName,
-  fetchLatestWarningXmlDocuments,
-  firstChildByName,
-  textOf
-} from "./xmlFeed.js";
 
 const PREFECTURE_NAMES = {
   "01": "北海道", "02": "青森県", "03": "岩手県", "04": "宮城県", "05": "秋田県", "06": "山形県",
@@ -91,51 +84,18 @@ export async function fetchWarningMap() {
 }
 
 async function fetchWarningReports() {
-  const documents = await fetchLatestWarningXmlDocuments();
-  return documents.map(parseWarningXmlDocument).filter((report) => report.items.length > 0);
-}
-
-function parseWarningXmlDocument(document) {
-  const report = document.documentElement;
-  const head = firstChildByName(report, "Head");
-  const body = firstChildByName(report, "Body");
-  const reportDatetime = textOf(firstChildByName(head, "ReportDateTime"));
-  const title = textOf(firstChildByName(head, "Title"));
-  const municipalityWarning = childrenByName(body, "Warning")
-    .find((warning) => {
-      const type = attrOf(warning, "type");
-      return type.includes("市町村等") && !type.includes("まとめた");
-    });
-
-  return {
-    reportDatetime,
-    title,
-    sourceFormat: "xml",
-    items: childrenByName(municipalityWarning, "Item").map(parseWarningXmlItem).filter(Boolean)
-  };
-}
-
-function parseWarningXmlItem(item) {
-  const area = firstChildByName(item, "Area");
-  const code = textOf(firstChildByName(area, "Code"));
-  if (!code) return null;
-
-  return {
-    code,
-    name: textOf(firstChildByName(area, "Name")),
-    warnings: childrenByName(item, "Kind").map(parseWarningKind).filter(Boolean)
-  };
-}
-
-function parseWarningKind(kind) {
-  const code = textOf(firstChildByName(kind, "Code"));
-  if (!code) return null;
-
-  return {
-    code,
-    name: textOf(firstChildByName(kind, "Name")),
-    status: textOf(firstChildByName(kind, "Status"))
-  };
+  const reportsByOffice = await Promise.all(
+    JMA_WARNING_OFFICE_CODES.map(async (officeCode) => {
+      try {
+        const reports = await fetchJson(`${JMA_ENDPOINTS.warningsBase}/${officeCode}.json`);
+        return Array.isArray(reports) ? reports : [];
+      } catch (error) {
+        console.warn(`[Weather Viewer] warning JSON unavailable: ${officeCode}`, error);
+        return [];
+      }
+    })
+  );
+  return reportsByOffice.flat();
 }
 
 function buildWarningAreaMap(warningReports, municipalityIndex) {

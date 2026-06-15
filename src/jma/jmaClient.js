@@ -17,7 +17,7 @@ export async function fetchText(url, options = {}) {
   const response = await fetch(url, {
     cache: options.cache ?? "no-store",
     headers: {
-      "Accept": "text/plain,application/xml,text/xml,*/*"
+      "Accept": "text/plain,*/*"
     }
   });
 
@@ -26,16 +26,6 @@ export async function fetchText(url, options = {}) {
   }
 
   return response.text();
-}
-
-export async function fetchXml(url, options = {}) {
-  const text = await fetchText(url, options);
-  const document = new DOMParser().parseFromString(text, "application/xml");
-  const parserError = document.querySelector("parsererror");
-  if (parserError) {
-    throw new Error(`JMA XML parse failed: ${parserError.textContent?.trim() ?? "invalid XML"}`);
-  }
-  return document;
 }
 
 export function parseJmaTime(value) {
