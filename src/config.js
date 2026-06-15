@@ -13,12 +13,24 @@ export const JMA_ENDPOINTS = {
   radarTimeList: "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json",
   radarTileBase: "https://www.jma.go.jp/bosai/jmatile/data/nowc",
   amedasTimeList: "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",
-  warnings: "https://www.jma.go.jp/bosai/warning/data/warning/map.json",
+  warningsBase: "https://www.jma.go.jp/bosai/warning/data/r8",
   areaConst: "https://www.jma.go.jp/bosai/common/const/area.json",
+  warningMunicipalities: "/data/jma-weather-warning-municipalities.geojson",
   amedasStationTable: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json",
   amedasMapBase: "https://www.jma.go.jp/bosai/amedas/data/map",
   typhoon: "https://www.jma.go.jp/bosai/typhoon/data/typhoon.json"
 };
+
+export const JMA_WARNING_OFFICE_CODES = [
+  "011000", "012000", "013000", "014100", "014030", "015000", "016000", "017000",
+  "020000", "030000", "040000", "050000", "060000", "070000", "080000", "090000",
+  "100000", "110000", "120000", "130000", "140000", "150000", "160000", "170000",
+  "180000", "190000", "200000", "210000", "220000", "230000", "240000", "250000",
+  "260000", "270000", "280000", "290000", "300000", "310000", "320000", "330000",
+  "340000", "350000", "360000", "370000", "380000", "390000", "400000", "410000",
+  "420000", "430000", "440000", "450000", "460040", "460100", "471000", "472000", "473000",
+  "474000"
+];
 
 export const TABS = [
   {
@@ -43,7 +55,7 @@ export const TABS = [
     title: "",
     cardLabel: "警戒レベル",
     primary: "Warnings",
-    description: "注意報・警報・特別警報を市区町村ポリゴンに色分け表示します。"
+    description: "注意報・警報・危険警報・特別警報を市区町村ポリゴンに色分け表示します。"
   },
   {
     id: "typhoon",

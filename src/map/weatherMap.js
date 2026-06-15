@@ -6,7 +6,8 @@ import {
   AMEDAS_SNOW_LEVELS,
   AMEDAS_TEMPERATURE_LEVELS,
   AMEDAS_WIND_LEVELS,
-  DEFAULT_VIEW
+  DEFAULT_VIEW,
+  JMA_ENDPOINTS
 } from "../config.js";
 import { worldLandGeoJson } from "./data/worldLandGeoJson.js";
 import { worldCountriesGeoJson } from "./data/worldCountriesGeoJson.js";
@@ -33,8 +34,11 @@ const RADAR_ZOOM_LEVELS = [
   { id: "z10", z: 10, minzoom: 9, maxzoom: 22 }
 ];
 const MUNICIPALITY_SOURCE_ID = "jma-weather-warning-municipalities";
+const WARNING_SOURCE_ID = "jma-active-warning-municipalities";
 const MUNICIPALITY_FILL_LAYER_ID = "jma-municipality-fill";
 const WARNING_OVERLAY_LAYER_ID = "jma-warning-overlay";
+const WARNING_HATCH_LAYER_ID = "jma-warning-emergency-hatch";
+const WARNING_HATCH_IMAGE_ID = "jma-warning-emergency-hatch-pattern";
 const DEFAULT_LAND_FILL = "#3c3d40";
 const NATURAL_EARTH_JAPAN_MASK_BOUNDS = {
   minLng: 122.0,
@@ -47,11 +51,13 @@ const baseMapData = {
   worldLand: buildWorldLandWithoutJapanData(),
   worldCountries: buildWorldCountriesWithoutJapanData()
 };
+let warningMunicipalityDataPromise = null;
 
 export function createWeatherMap(elementId) {
   let map = null;
   let pendingRender = null;
   let activeMode = "radar";
+  let warningAreasByCode = new Map();
 
   function initialize() {
     map = new maplibregl.Map({
@@ -96,6 +102,7 @@ export function createWeatherMap(elementId) {
 
     const source = map.getSource(SAMPLE_SOURCE_ID);
     source.setData(createSampleFeatureCollection(mode, data));
+    updateWarningAreaLookup(mode, data);
     updateRadarLayer(map, mode, data);
     updateWarningMunicipalityPaint(map, mode, data);
   }
@@ -106,6 +113,17 @@ export function createWeatherMap(elementId) {
       data: createSampleFeatureCollection(activeMode)
     });
     setupWindArrowImage(map);
+    setupWarningHatchImage(map);
+
+    map.addLayer({
+      id: WARNING_HATCH_LAYER_ID,
+      type: "fill",
+      source: WARNING_SOURCE_ID,
+      paint: {
+        "fill-pattern": WARNING_HATCH_IMAGE_ID,
+        "fill-opacity": 0
+      }
+    }, "jma-municipality-line");
 
     map.addLayer({
       id: "sample-fill",
@@ -224,6 +242,30 @@ export function createWeatherMap(elementId) {
           .addTo(map);
       });
     });
+
+    map.on("mouseenter", WARNING_OVERLAY_LAYER_ID, (event) => {
+      const feature = event.features?.[0];
+      const area = warningAreasByCode.get(String(feature?.properties?.code ?? ""));
+      if (area) map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", WARNING_OVERLAY_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "";
+    });
+    map.on("click", WARNING_OVERLAY_LAYER_ID, (event) => {
+      const feature = event.features?.[0];
+      const area = warningAreasByCode.get(String(feature?.properties?.code ?? ""));
+      if (!area) return;
+      new maplibregl.Popup({ closeButton: false })
+        .setLngLat(event.lngLat)
+        .setHTML(buildWarningPopup(area))
+        .addTo(map);
+    });
+  }
+
+  function updateWarningAreaLookup(mode, data = {}) {
+    warningAreasByCode = mode === "warnings" && Array.isArray(data?.activeAreas)
+      ? new Map(data.activeAreas.map((area) => [String(area.areaCode), area]))
+      : new Map();
   }
 
   return { initialize, setMode, renderData };
@@ -245,6 +287,11 @@ function createBaseStyle() {
       [MUNICIPALITY_SOURCE_ID]: {
         type: "geojson",
         data: "/data/jma-weather-warning-municipalities.geojson",
+        promoteId: "code"
+      },
+      [WARNING_SOURCE_ID]: {
+        type: "geojson",
+        data: createEmptyFeatureCollection(),
         promoteId: "code"
       },
       [RADAR_COVERAGE_SOURCE_ID]: {
@@ -301,7 +348,7 @@ function createBaseStyle() {
       {
         id: WARNING_OVERLAY_LAYER_ID,
         type: "fill",
-        source: MUNICIPALITY_SOURCE_ID,
+        source: WARNING_SOURCE_ID,
         paint: {
           "fill-color": "rgba(0, 0, 0, 0)",
           "fill-antialias": false,
@@ -408,6 +455,29 @@ function setupWindArrowImage(map) {
   map.addImage(WIND_ARROW_IMAGE_ID, context.getImageData(0, 0, size, size), { sdf: true });
 }
 
+function setupWarningHatchImage(map) {
+  if (map.hasImage(WARNING_HATCH_IMAGE_ID)) return;
+
+  const size = 16;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  context.clearRect(0, 0, size, size);
+  context.strokeStyle = "rgba(0, 0, 0, 0.9)";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(-4, size + 4);
+  context.lineTo(size + 4, -4);
+  context.moveTo(size - 4, size + 4);
+  context.lineTo(size + 4, size - 4);
+  context.stroke();
+
+  map.addImage(WARNING_HATCH_IMAGE_ID, context.getImageData(0, 0, size, size));
+}
+
 function isSmallNaturalEarthJapanFeature(feature) {
   const bounds = computeGeometryBounds(feature?.geometry);
   if (!Number.isFinite(bounds.minLng)) return false;
@@ -479,26 +549,99 @@ function updateWarningMunicipalityPaint(map, mode, data = {}) {
   const activeAreas = mode === "warnings" && Array.isArray(data?.activeAreas)
     ? data.activeAreas
     : [];
+  void updateWarningMunicipalitySource(map, activeAreas);
 
   if (activeAreas.length === 0) {
     map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-color", "rgba(0, 0, 0, 0)");
     map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-opacity", 0);
+    updateWarningHatchPaint(map, []);
     return;
   }
 
-  const colorExpression = ["match", ["get", "code"]];
-  activeAreas.forEach((area) => {
-    colorExpression.push(String(area.areaCode), getWarningColor(area.level));
-  });
-  colorExpression.push("rgba(0, 0, 0, 0)");
-
-  map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-color", colorExpression);
-  map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-opacity", [
-    "case",
-    ["in", ["get", "code"], ["literal", activeAreas.map((area) => String(area.areaCode))]],
-    0.72,
-    0
+  map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-color", [
+    "match",
+    ["get", "warningLevel"],
+    "emergency",
+    getWarningColor("emergency"),
+    "danger",
+    getWarningColor("danger"),
+    "warning",
+    getWarningColor("warning"),
+    "advisory",
+    getWarningColor("advisory"),
+    "rgba(0, 0, 0, 0)"
   ]);
+  map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-opacity", [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    4,
+    0.68,
+    8,
+    0.78
+  ]);
+  updateWarningHatchPaint(map, activeAreas);
+}
+
+async function updateWarningMunicipalitySource(map, activeAreas) {
+  const source = map?.getSource(WARNING_SOURCE_ID);
+  if (!source?.setData) return;
+
+  try {
+    if (activeAreas.length === 0) {
+      source.setData(createEmptyFeatureCollection());
+      return;
+    }
+
+    const municipalityData = await loadWarningMunicipalityData();
+    const activeAreasByCode = new Map(activeAreas.map((area) => [String(area.areaCode), area]));
+    source.setData({
+      ...municipalityData,
+      features: municipalityData.features
+        .map((feature) => {
+          const code = String(feature?.properties?.code ?? "");
+          const activeArea = activeAreasByCode.get(code);
+          if (!activeArea?.level) return null;
+          return {
+            ...feature,
+            properties: {
+              ...feature.properties,
+              warningLevel: activeArea.level
+            }
+          };
+        })
+        .filter(Boolean)
+    });
+    map.triggerRepaint();
+  } catch (error) {
+    console.warn("[Weather Viewer] warning municipality source update failed", error);
+  }
+}
+
+function loadWarningMunicipalityData() {
+  if (!warningMunicipalityDataPromise) {
+    warningMunicipalityDataPromise = fetch(JMA_ENDPOINTS.warningMunicipalities)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      });
+  }
+  return warningMunicipalityDataPromise;
+}
+
+function updateWarningHatchPaint(map, activeAreas) {
+  if (!map?.getLayer(WARNING_HATCH_LAYER_ID)) return;
+
+  map.setFilter(WARNING_HATCH_LAYER_ID, [
+    "==",
+    ["get", "warningLevel"],
+    "emergency"
+  ]);
+  map.setPaintProperty(
+    WARNING_HATCH_LAYER_ID,
+    "fill-opacity",
+    activeAreas.some((area) => area.level === "emergency") ? 0.7 : 0
+  );
 }
 
 function updateRadarLayer(map, mode, data = {}) {
@@ -578,9 +721,17 @@ function getRadarTileUrl(tileUrl, level) {
 }
 
 function getWarningColor(level) {
-  if (level === "emergency") return "#b400c9";
+  if (level === "emergency") return "#b400ff";
+  if (level === "danger") return "#b400ff";
   if (level === "warning") return "#ff2b12";
   return "#fff000";
+}
+
+function createEmptyFeatureCollection() {
+  return {
+    type: "FeatureCollection",
+    features: []
+  };
 }
 
 function createRadarCoverageFeature() {
@@ -648,6 +799,18 @@ function createAmedasFeatures(data) {
 
 function createWarningFeatures(data) {
   return [];
+}
+
+function buildWarningPopup(area) {
+  const warnings = (area.warnings ?? [])
+    .map((warning) => `<span class="warning-badge warning-badge-${escapePopup(warning.level)}">${escapePopup(warning.label)}</span>`)
+    .join("");
+  return `
+    <strong>${escapePopup(area.areaName ?? area.areaCode)}</strong><br>
+    <span>${escapePopup(area.prefecture ?? "")}</span>
+    <div class="warning-popup-badges">${warnings}</div>
+    <span>更新: ${escapePopup(area.updatedAt ?? "未取得")}</span>
+  `;
 }
 
 function createTyphoonFeatures(data) {

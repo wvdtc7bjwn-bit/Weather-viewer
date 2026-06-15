@@ -9,7 +9,12 @@ import {
 const legendsByTab = {
   radar: [["弱い雨", "legend-rain-low"], ["強い雨", "legend-rain-high"]],
   amedas: [["観測地点", "legend-amedas"]],
-  warnings: [["注意報", "legend-advisory"], ["警報", "legend-warning"], ["特別警報", "legend-emergency"]],
+  warnings: [
+    ["注意報", "legend-advisory"],
+    ["警報", "legend-warning"],
+    ["危険警報", "legend-danger"],
+    ["特別警報", "legend-emergency"]
+  ],
   typhoon: [["進路", "legend-typhoon"], ["予報円", "legend-forecast"]]
 };
 
@@ -59,7 +64,7 @@ function buildDescription(tab, state) {
   if (tab.id === "warnings") {
     if (state.status === "loading") return "市区町村ごとの警報・注意報を取得中です。";
     if (state.status === "error") return "警報・注意報データを取得できませんでした。";
-    return "都道府県ごとに、市区町村の注意報・警報・特別警報を表示しています。";
+    return "都道府県ごとに、市区町村の注意報・警報・危険警報・特別警報を表示しています。";
   }
   if (tab.id === "typhoon") {
     if (state.status === "loading") return "台風データを取得中です。";
@@ -224,12 +229,12 @@ function renderWarningDetails(tab, state) {
   }
 
   root.innerHTML = groups.map((group) => `
-    <div class="warning-prefecture-label">${escapeHtml(group.prefecture)}</div>
+    <div class="warning-prefecture-label">${escapeHtml(group.prefecture)}<span>${escapeHtml(group.count ?? group.areas.length)}件</span></div>
     ${group.areas.map((area) => `
       <article class="warning-area-row">
         <strong>${escapeHtml(area.areaName)}</strong>
         <div class="warning-badges">
-          ${area.warnings.slice(0, 4).map((warning) => `
+          ${area.warnings.map((warning) => `
             <span class="warning-badge warning-badge-${escapeHtml(warning.level)}">${escapeHtml(warning.label)}</span>
           `).join("")}
         </div>
