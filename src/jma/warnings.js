@@ -62,6 +62,15 @@ const WARNING_LABELS = {
   "49": ["土砂災害危険警報", "danger"]
 };
 
+const WARNING_LEVEL_NUMBERS = {
+  advisory: 2,
+  warning: 3,
+  danger: 4,
+  emergency: 5
+};
+
+const WARNING_LEVEL_TARGETS = ["洪水", "大雨", "土砂災害", "高潮"];
+
 export async function fetchWarningMap() {
   const [warningReports, municipalityGeoJson] = await Promise.all([
     fetchWarningReports(),
@@ -224,11 +233,17 @@ function applyWarningKinds(currentWarnings, kinds = []) {
       return;
     }
 
-    const [label, level] = WARNING_LABELS[code] ?? [`警報コード ${code}`, "advisory"];
-    warningsByCode.set(code, { code, label, level, status });
+    const [rawLabel, level] = WARNING_LABELS[code] ?? [`警報コード ${code}`, "advisory"];
+    const levelNumber = shouldShowWarningLevel(rawLabel) ? WARNING_LEVEL_NUMBERS[level] ?? null : null;
+    const label = levelNumber ? `レベル${levelNumber} ${rawLabel}` : rawLabel;
+    warningsByCode.set(code, { code, rawLabel, label, level, levelNumber, status });
   });
 
   return sortWarnings([...warningsByCode.values()]);
+}
+
+function shouldShowWarningLevel(label) {
+  return WARNING_LEVEL_TARGETS.some((target) => String(label).includes(target));
 }
 
 function sortWarnings(warnings) {

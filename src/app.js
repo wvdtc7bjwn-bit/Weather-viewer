@@ -1,7 +1,7 @@
 import { AMEDAS_METRICS, TABS } from "./config.js";
 import { createWeatherMap } from "./map/weatherMap.js";
 import { setupTabs } from "./ui/tabs.js";
-import { setupAmedasSubTabs, setupRadarControls, updateLeftPanel } from "./ui/leftPanel.js";
+import { setupAmedasSubTabs, setupRadarControls, setupWarningAreaSelection, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
 import { startClock } from "./ui/time.js";
@@ -149,6 +149,7 @@ export function createWeatherApp() {
     weatherMap.initialize();
     tabControls = setupTabs({ onChange: selectTab });
     setupAmedasSubTabs({ onChange: selectAmedasMetric });
+    setupWarningAreaSelection();
     setupRadarControls({
       onSeek: selectRadarFrame,
       onStep: stepRadarFrame,

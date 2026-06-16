@@ -475,10 +475,12 @@ export function createWeatherMap(elementId) {
       const feature = event.features?.[0];
       const area = warningAreasByCode.get(String(feature?.properties?.code ?? ""));
       if (!area) return;
-      new maplibregl.Popup({ closeButton: false })
-        .setLngLat(event.lngLat)
-        .setHTML(buildWarningPopup(area))
-        .addTo(map);
+      window.dispatchEvent(new CustomEvent("weather-warning-area-select", {
+        detail: {
+          areaCode: area.areaCode,
+          areaName: area.areaName
+        }
+      }));
     });
   }
 
@@ -1043,18 +1045,6 @@ function createAmedasFeatures(data) {
 
 function createWarningFeatures(data) {
   return [];
-}
-
-function buildWarningPopup(area) {
-  const warnings = (area.warnings ?? [])
-    .map((warning) => `<span class="warning-badge warning-badge-${escapePopup(warning.level)}">${escapePopup(warning.label)}</span>`)
-    .join("");
-  return `
-    <strong>${escapePopup(area.areaName ?? area.areaCode)}</strong><br>
-    <span>${escapePopup(area.prefecture ?? "")}</span>
-    <div class="warning-popup-badges">${warnings}</div>
-    <span>更新: ${escapePopup(area.updatedAt ?? "未取得")}</span>
-  `;
 }
 
 function createTyphoonFeatures(data) {

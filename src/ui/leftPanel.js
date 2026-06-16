@@ -7,6 +7,8 @@ import {
 } from "../config.js";
 import { NO_TYPHOON_MESSAGE } from "../jma/typhoon.js";
 
+let selectedWarningAreaCode = "";
+
 const legendsByTab = {
   amedas: [["観測地点", "legend-amedas"]],
   warnings: [
@@ -176,6 +178,45 @@ function renderRadarControls(tab, state) {
   if (playButton) playButton.textContent = state.radarPlaying ? "停止" : "再生";
 }
 
+export function setupWarningAreaSelection() {
+  const root = document.getElementById("warning-detail-list");
+  if (!root) return;
+
+  root.addEventListener("click", (event) => {
+    const row = event.target.closest(".warning-area-row");
+    if (!row?.dataset.warningAreaCode) return;
+    selectWarningArea(row.dataset.warningAreaCode, { scroll: false });
+  });
+
+  window.addEventListener("weather-warning-area-select", (event) => {
+    const areaCode = event.detail?.areaCode;
+    if (areaCode) selectWarningArea(areaCode, { scroll: true });
+  });
+}
+
+function selectWarningArea(areaCode, { scroll } = {}) {
+  selectedWarningAreaCode = String(areaCode);
+  const root = document.getElementById("warning-detail-list");
+  if (!root || root.hidden) return;
+
+  root.querySelectorAll(".warning-area-row.selected").forEach((row) => {
+    row.classList.remove("selected");
+  });
+
+  const row = root.querySelector(`[data-warning-area-code="${cssEscape(selectedWarningAreaCode)}"]`);
+  if (!row) return;
+
+  row.classList.add("selected");
+  if (!scroll) return;
+
+  const rootRect = root.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  root.scrollBy({
+    top: rowRect.top - rootRect.top - root.clientHeight * 0.38,
+    behavior: "smooth"
+  });
+}
+
 function getAmedasMetric(metricId) {
   return AMEDAS_METRICS.find((item) => item.id === metricId) ?? AMEDAS_METRICS[0];
 }
@@ -241,7 +282,7 @@ function renderWarningDetails(tab, state) {
   root.innerHTML = groups.map((group) => `
     <div class="warning-prefecture-label">${escapeHtml(group.prefecture)}<span>${escapeHtml(group.count ?? group.areas.length)}件</span></div>
     ${group.areas.map((area) => `
-      <article class="warning-area-row">
+      <article class="warning-area-row${String(area.areaCode) === selectedWarningAreaCode ? " selected" : ""}" data-warning-area-code="${escapeHtml(area.areaCode)}">
         <strong>${escapeHtml(area.areaName)}</strong>
         <div class="warning-badges">
           ${area.warnings.map((warning) => `
@@ -409,4 +450,9 @@ function escapeHtml(value) {
     "'": "&#39;",
     '"': "&quot;"
   }[char]));
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(value);
+  return String(value).replace(/["\\]/g, "\\$&");
 }

@@ -221,10 +221,18 @@ h2 {
   padding: 10px 12px;
   background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  scroll-margin: 16px;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
 }
 
 .warning-area-row:last-child {
   border-bottom: 0;
+}
+
+.warning-area-row.selected {
+  background: rgba(86, 183, 242, 0.14);
+  box-shadow: inset 3px 0 0 #56b7f2;
 }
 
 .warning-area-row > strong {
@@ -279,13 +287,6 @@ h2 {
     #b400ff;
   color: #fff;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14) inset;
-}
-
-.warning-popup-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 8px 0;
 }
 
 .warning-empty {
