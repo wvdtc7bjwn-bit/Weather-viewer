@@ -20,6 +20,8 @@ export const JMA_ENDPOINTS = {
   amedasTimeList: "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",
   warningsBase: "https://www.jma.go.jp/bosai/warning/data/r8",
   warningTimelineBase: "https://www.jma.go.jp/bosai/warning_timeline/data",
+  kikikuruTimeList: "https://www.jma.go.jp/bosai/jmatile/data/risk/targetTimes.json",
+  kikikuruTileBase: "https://www.jma.go.jp/bosai/jmatile/data/risk",
   areaConst: "https://www.jma.go.jp/bosai/common/const/area.json",
   warningMunicipalities: publicAsset("data/jma-weather-warning-municipalities.geojson"),
   amedasStationTable: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json",
@@ -122,4 +124,22 @@ export const AMEDAS_SNOW_LEVELS = [
   { min: 20, label: "20〜50cm", color: "#1834d6" },
   { min: 5, label: "5〜20cm", color: "#426fc8" },
   { min: 1, label: "1〜5cm", color: "#b7d5ea" }
+];
+
+export const KIKIKURU_ELEMENTS = [
+  { id: "land", label: "土砂キキクル", opacity: 0.86 },
+  { id: "inund", label: "浸水キキクル", opacity: 0.78 }
+];
+
+export const KIKIKURU_LAYER_OPTIONS = [
+  { id: "land", label: "土砂キキクル" },
+  { id: "inund", label: "浸水キキクル" }
+];
+
+export const KIKIKURU_LEVELS = [
+  { label: "災害切迫", color: "#111111" },
+  { label: "危険", color: "#a000ff" },
+  { label: "警戒", color: "#ff2b12" },
+  { label: "注意", color: "#fff000" },
+  { label: "今後の情報等に留意", color: "#ffffff" }
 ];

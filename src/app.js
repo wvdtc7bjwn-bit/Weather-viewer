@@ -1,7 +1,7 @@
-import { AMEDAS_METRICS, TABS } from "./config.js";
+import { AMEDAS_METRICS, KIKIKURU_LAYER_OPTIONS, TABS } from "./config.js";
 import { createWeatherMap } from "./map/weatherMap.js";
 import { setupTabs } from "./ui/tabs.js";
-import { setupAmedasRankingToggle, setupAmedasSubTabs, setupRadarControls, setupWarningAreaSelection, updateLeftPanel } from "./ui/leftPanel.js";
+import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupWarningAreaSelection, setupWarningSubTabs, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
 import { startClock } from "./ui/time.js";
@@ -9,18 +9,37 @@ import { fetchRadarTimes } from "./jma/radar.js";
 import { fetchAmedasLatestTime } from "./jma/amedas.js";
 import { fetchWarningMap } from "./jma/warnings.js";
 import { fetchTyphoonList } from "./jma/typhoon.js";
+import { fetchKikikuruTiles } from "./jma/kikikuru.js";
 
 const loaders = {
   radar: fetchRadarTimes,
   amedas: fetchAmedasLatestTime,
-  warnings: fetchWarningMap,
+  warnings: fetchWarningTabData,
   typhoon: fetchTyphoonList
 };
+
+async function fetchWarningTabData() {
+  const [warningResult, kikikuruResult] = await Promise.allSettled([
+    fetchWarningMap(),
+    fetchKikikuruTiles()
+  ]);
+
+  if (warningResult.status === "rejected") throw warningResult.reason;
+
+  return {
+    ...warningResult.value,
+    kikikuru: kikikuruResult.status === "fulfilled"
+      ? kikikuruResult.value
+      : { unavailable: true, error: kikikuruResult.reason }
+  };
+}
 
 export function createWeatherApp() {
   const launchOptions = getLaunchOptions();
   let activeTab = launchOptions.initialTab;
   let activeAmedasMetric = AMEDAS_METRICS[0].id;
+  let activeWarningView = "status";
+  let activeKikikuruLayer = KIKIKURU_LAYER_OPTIONS[0]?.id ?? "land";
   let weatherMap = null;
   let latestDataByTab = {};
   let radarPlayTimer = null;
@@ -31,7 +50,13 @@ export function createWeatherApp() {
     activeTab = tab.id;
     tabControls?.setActiveButton(tab.id);
     if (tab.id !== "radar") stopRadarPlayback();
-    updateLeftPanel(tab, { status: "loading", amedasMetric: activeAmedasMetric, radarPlaying: Boolean(radarPlayTimer) });
+    updateLeftPanel(tab, {
+      status: "loading",
+      amedasMetric: activeAmedasMetric,
+      warningView: activeWarningView,
+      activeKikikuruLayer,
+      radarPlaying: Boolean(radarPlayTimer)
+    });
     weatherMap?.setMode(tab.id);
 
     try {
@@ -40,7 +65,14 @@ export function createWeatherApp() {
       updateCurrentView(tab, data);
     } catch (error) {
       console.warn(`[Weather Viewer] ${tab.id} load failed`, error);
-      updateLeftPanel(tab, { status: "error", error, amedasMetric: activeAmedasMetric, radarPlaying: Boolean(radarPlayTimer) });
+      updateLeftPanel(tab, {
+        status: "error",
+        error,
+        amedasMetric: activeAmedasMetric,
+        warningView: activeWarningView,
+        activeKikikuruLayer,
+        radarPlaying: Boolean(radarPlayTimer)
+      });
     }
   }
 
@@ -51,12 +83,29 @@ export function createWeatherApp() {
     updateCurrentView(tab, latestDataByTab.amedas);
   }
 
+  function selectWarningView(viewId) {
+    activeWarningView = viewId === "kikikuru" ? "kikikuru" : "status";
+    if (activeTab !== "warnings") return;
+    const tab = TABS.find((item) => item.id === "warnings");
+    updateCurrentView(tab, latestDataByTab.warnings);
+  }
+
+  function selectKikikuruLayer(layerId) {
+    if (!KIKIKURU_LAYER_OPTIONS.some((element) => element.id === layerId)) return;
+    activeKikikuruLayer = layerId;
+    if (activeTab !== "warnings") return;
+    const tab = TABS.find((item) => item.id === "warnings");
+    updateCurrentView(tab, latestDataByTab.warnings);
+  }
+
   function updateCurrentView(tab, data) {
     const displayData = buildDisplayData(tab, data);
     updateLeftPanel(tab, {
       status: "ok",
       data: displayData,
       amedasMetric: activeAmedasMetric,
+      warningView: activeWarningView,
+      activeKikikuruLayer,
       radarPlaying: Boolean(radarPlayTimer)
     });
     weatherMap?.renderData(tab.id, displayData);
@@ -64,6 +113,7 @@ export function createWeatherApp() {
 
   function buildDisplayData(tab, data = {}) {
     if (tab.id === "amedas") return { ...data, activeMetric: activeAmedasMetric };
+    if (tab.id === "warnings") return { ...data, activeWarningView, activeKikikuruLayer };
     if (tab.id !== "radar") return data;
 
     const frames = data.frames ?? [];
@@ -156,6 +206,8 @@ export function createWeatherApp() {
     tabControls = setupTabs({ onChange: selectTab });
     setupAmedasSubTabs({ onChange: selectAmedasMetric });
     setupAmedasRankingToggle({ onChange: refreshAmedasPanel });
+    setupWarningSubTabs({ onChange: selectWarningView });
+    setupKikikuruLayerToggles({ onChange: selectKikikuruLayer });
     setupWarningAreaSelection();
     setupRadarControls({
       onSeek: selectRadarFrame,

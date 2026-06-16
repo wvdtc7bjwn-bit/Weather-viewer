@@ -3,13 +3,17 @@ import {
   AMEDAS_PRECIPITATION_LEVELS,
   AMEDAS_SNOW_LEVELS,
   AMEDAS_TEMPERATURE_LEVELS,
-  AMEDAS_WIND_LEVELS
+  AMEDAS_WIND_LEVELS,
+  KIKIKURU_LAYER_OPTIONS,
+  KIKIKURU_LEVELS
 } from "../config.js";
 import { NO_TYPHOON_MESSAGE } from "../jma/typhoon.js";
 
 let selectedWarningAreaCode = "";
 let amedasRankingOrder = "top";
 let activeWarningAreasByCode = new Map();
+
+const AMEDAS_RANKING_LIMIT = 20;
 
 const legendsByTab = {
   amedas: [["観測地点", "legend-amedas"]],
@@ -30,17 +34,21 @@ const legendsByTab = {
 
 export function updateLeftPanel(tab, state = {}) {
   const amedasMetric = getAmedasMetric(state.amedasMetric ?? state.data?.activeMetric);
+  const warningView = state.warningView ?? state.data?.activeWarningView ?? "status";
+  const activeKikikuruLayer = state.activeKikikuruLayer ?? state.data?.activeKikikuruLayer ?? KIKIKURU_LAYER_OPTIONS[0]?.id;
   setText("mode-label", tab.label);
   setText("panel-title", buildPanelTitle(tab, state));
   setPanelTitleVisible(tab.id === "typhoon" && state.data?.hasTyphoon !== false);
   setText("panel-description", buildDescription(tab, state));
   setText("panel-time", buildTimeText(state));
+  renderWarningSubTabs(tab, warningView);
+  renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
   renderRadarControls(tab, state);
-  renderWarningDetails(tab, state);
+  renderWarningDetails(tab, state, warningView);
   renderTyphoonDetails(tab, state);
   renderAmedasRanking(tab, state, amedasMetric);
-  renderLegend(tab.id, amedasMetric.id);
+  renderLegend(tab.id, amedasMetric.id, warningView);
 }
 
 export function setupAmedasSubTabs({ onChange }) {
@@ -69,6 +77,29 @@ export function setupAmedasRankingToggle({ onChange }) {
   });
 }
 
+export function setupWarningSubTabs({ onChange }) {
+  const buttons = [...document.querySelectorAll(".warning-sub-button")];
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const viewId = button.dataset.warningView;
+      buttons.forEach((item) => item.classList.toggle("active", item === button));
+      onChange?.(viewId);
+    });
+  });
+}
+
+export function setupKikikuruLayerToggles({ onChange }) {
+  const root = document.getElementById("kikikuru-layer-tabs");
+  if (!root) return;
+
+  root.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest("[data-kikikuru-layer]");
+    if (!button) return;
+    onChange?.(button.dataset.kikikuruLayer);
+  });
+}
+
 export function setupRadarControls({ onSeek, onStep, onTogglePlay, onGoLatest }) {
   document.getElementById("radar-time-slider")?.addEventListener("input", (event) => {
     onSeek?.(Number(event.currentTarget.value));
@@ -90,6 +121,10 @@ function buildDescription(tab, state) {
   if (tab.id === "warnings") {
     if (state.status === "loading") return "市区町村ごとの警報・注意報を取得中です。";
     if (state.status === "error") return "警報・注意報データを取得できませんでした。";
+    if (state.data?.activeWarningView === "kikikuru") {
+      if (state.data?.kikikuru?.unavailable) return "キキクルのタイルを取得できませんでした。";
+      return "土砂・浸水キキクルを地図上に重ねて表示しています。";
+    }
     return "都道府県ごとに、市区町村の注意報・警報・危険警報・特別警報を表示しています。";
   }
   if (tab.id === "typhoon") {
@@ -116,14 +151,18 @@ function buildTimeText(state) {
   if (state.status === "loading") return "更新時刻を取得中...";
   if (state.status === "error") return "更新時刻: 取得失敗";
   if (state.data?.hasTyphoon === false) return "更新時刻: --";
+  if (state.data?.activeWarningView === "kikikuru") {
+    const value = state.data?.kikikuru?.latestTime;
+    return value ? `更新時刻: ${value}` : "更新時刻: 未取得";
+  }
   const value = state.data?.latestTime ?? state.data?.updatedAt ?? state.data?.summary;
   return value ? `更新時刻: ${value}` : "更新時刻: 未取得";
 }
 
-function renderLegend(tabId, amedasMetricId) {
+function renderLegend(tabId, amedasMetricId, warningView = "status") {
   const root = document.getElementById("legend-list");
   if (!root) return;
-  const items = buildLegendItems(tabId, amedasMetricId);
+  const items = buildLegendItems(tabId, amedasMetricId, warningView);
 
   root.innerHTML = items
     .map(([label, className, color]) => {
@@ -142,14 +181,51 @@ function renderLegend(tabId, amedasMetricId) {
   }
 }
 
-function buildLegendItems(tabId, amedasMetricId) {
+function buildLegendItems(tabId, amedasMetricId, warningView = "status") {
   if (tabId === "radar") {
     return AMEDAS_PRECIPITATION_LEVELS.map((level) => [level.label, "", level.color]);
   }
   if (tabId === "amedas") {
     return getAmedasLevels(amedasMetricId).map((level) => [level.label, "", level.color]);
   }
+  if (tabId === "warnings" && warningView === "kikikuru") {
+    return KIKIKURU_LEVELS.map((level) => [level.label, "", level.color]);
+  }
   return legendsByTab[tabId] ?? [];
+}
+
+function renderWarningSubTabs(tab, activeView) {
+  const root = document.getElementById("warning-sub-tabs");
+  if (!root) return;
+
+  const isWarnings = tab.id === "warnings";
+  root.hidden = !isWarnings;
+  if (!isWarnings) return;
+
+  [...root.querySelectorAll(".warning-sub-button")].forEach((button) => {
+    button.classList.toggle("active", button.dataset.warningView === activeView);
+  });
+}
+
+function renderKikikuruLayerTabs(tab, warningView, activeLayer) {
+  const root = document.getElementById("kikikuru-layer-tabs");
+  if (!root) return;
+
+  const isKikikuru = tab.id === "warnings" && warningView === "kikikuru";
+  root.hidden = !isKikikuru;
+  if (!isKikikuru) {
+    root.innerHTML = "";
+    return;
+  }
+
+  root.innerHTML = KIKIKURU_LAYER_OPTIONS.map((element) => `
+    <button
+      type="button"
+      class="kikikuru-layer-button${activeLayer === element.id ? " active" : ""}"
+      data-kikikuru-layer="${escapeHtml(element.id)}"
+      aria-pressed="${activeLayer === element.id ? "true" : "false"}"
+    >${escapeHtml(element.label)}</button>
+  `).join("");
 }
 
 function renderAmedasSubTabs(tab, activeMetricId) {
@@ -280,11 +356,11 @@ function buildSliderBackground(activeIndex, observedIndex, length) {
     rgba(255,255,255,0.16) ${active}, rgba(255,255,255,0.16) 100%)`;
 }
 
-function renderWarningDetails(tab, state) {
+function renderWarningDetails(tab, state, warningView = "status") {
   const root = document.getElementById("warning-detail-list");
   if (!root) return;
 
-  const isWarnings = tab.id === "warnings";
+  const isWarnings = tab.id === "warnings" && warningView === "status";
   root.hidden = !isWarnings;
   if (!isWarnings) {
     root.innerHTML = "";
@@ -432,7 +508,7 @@ function renderAmedasRanking(tab, state, metric) {
   }
 
   const order = metric.id === "temperature" ? amedasRankingOrder : "top";
-  const items = buildAmedasRankingItems(state.data, metric, order).slice(0, 5);
+  const items = buildAmedasRankingItems(state.data, metric, order).slice(0, AMEDAS_RANKING_LIMIT);
   if (items.length === 0) {
     root.innerHTML = `<div class="amedas-ranking-empty">表示できる観測値がありません</div>`;
     return;

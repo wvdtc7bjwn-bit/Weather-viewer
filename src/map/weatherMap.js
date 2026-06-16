@@ -7,7 +7,8 @@ import {
   AMEDAS_TEMPERATURE_LEVELS,
   AMEDAS_WIND_LEVELS,
   DEFAULT_VIEW,
-  JMA_ENDPOINTS
+  JMA_ENDPOINTS,
+  KIKIKURU_ELEMENTS
 } from "../config.js";
 import { worldLandGeoJson } from "./data/worldLandGeoJson.js";
 import { worldCountriesGeoJson } from "./data/worldCountriesGeoJson.js";
@@ -42,6 +43,14 @@ const RADAR_COVERAGE_SOURCE_ID = "jma-nowcast-coverage";
 const RADAR_COVERAGE_LAYER_ID = "jma-nowcast-coverage";
 const RADAR_SOURCE_PREFIX = "jma-nowcast-radar-z";
 const RADAR_LAYER_PREFIX = "jma-nowcast-radar-z";
+const KIKIKURU_SOURCE_PREFIX = "jma-kikikuru";
+const KIKIKURU_LAYER_PREFIX = "jma-kikikuru";
+const KIKIKURU_ZOOM_LEVELS = [
+  { id: "z4", z: 4, minzoom: 4, maxzoom: 5 },
+  { id: "z6", z: 6, minzoom: 5, maxzoom: 7 },
+  { id: "z8", z: 8, minzoom: 7, maxzoom: 10 },
+  { id: "z10", z: 10, minzoom: 10, maxzoom: 22 }
+];
 const RADAR_ZOOM_LEVELS = [
   { id: "z2", z: 2, minzoom: 1, maxzoom: 3 },
   { id: "z4", z: 4, minzoom: 3, maxzoom: 5 },
@@ -68,6 +77,7 @@ const baseMapData = {
   worldCountries: buildWorldCountriesWithoutJapanData()
 };
 let warningMunicipalityDataPromise = null;
+const kikikuruTileUrlCache = new Map();
 
 export function createWeatherMap(elementId) {
   let map = null;
@@ -107,6 +117,9 @@ export function createWeatherMap(elementId) {
     Object.values(MODE_CLASS).forEach((className) => container.classList.remove(className));
     container.classList.add(MODE_CLASS[mode] ?? MODE_CLASS.radar);
     setRadarVisible(map, mode === "radar");
+    if (mode !== "warnings") {
+      setKikikuruVisible(map, false);
+    }
     if (mode !== "warnings") updateWarningMunicipalityPaint(map, mode);
   }
 
@@ -122,6 +135,7 @@ export function createWeatherMap(elementId) {
     const typhoonCollection = updateTyphoonLayers(mode, data);
     updateWarningAreaLookup(mode, data);
     updateRadarLayer(map, mode, data);
+    updateKikikuruLayer(map, mode, data);
     updateWarningMunicipalityPaint(map, mode, data);
   }
 
@@ -489,7 +503,7 @@ export function createWeatherMap(elementId) {
   }
 
   function updateWarningAreaLookup(mode, data = {}) {
-    warningAreasByCode = mode === "warnings" && Array.isArray(data?.activeAreas)
+    warningAreasByCode = mode === "warnings" && data?.activeWarningView !== "kikikuru" && Array.isArray(data?.activeAreas)
       ? new Map(data.activeAreas.map((area) => [String(area.areaCode), area]))
       : new Map();
   }
@@ -794,7 +808,7 @@ function computeGeometryBounds(geometry) {
 function updateWarningMunicipalityPaint(map, mode, data = {}) {
   if (!map?.getLayer(WARNING_OVERLAY_LAYER_ID)) return;
 
-  const activeAreas = mode === "warnings" && Array.isArray(data?.activeAreas)
+  const activeAreas = mode === "warnings" && data?.activeWarningView !== "kikikuru" && Array.isArray(data?.activeAreas)
     ? data.activeAreas
     : [];
   void updateWarningMunicipalitySource(map, activeAreas);
@@ -965,6 +979,122 @@ function getRadarLayerId(id) {
 }
 
 function getRadarTileUrl(tileUrl, level) {
+  return tileUrl.replace("{z}", String(level.z));
+}
+
+function updateKikikuruLayer(map, mode, data = {}) {
+  const isVisible = mode === "warnings" && data?.activeWarningView === "kikikuru";
+  const tileUrls = data?.kikikuru?.tileUrls ?? {};
+  const activeLayerIds = getActiveKikikuruLayerIds(data?.activeKikikuruLayer);
+
+  if (!isVisible || Object.keys(tileUrls).length === 0) {
+    setKikikuruVisible(map, false);
+    return;
+  }
+
+  KIKIKURU_ELEMENTS.forEach((element) => {
+    const tileUrl = tileUrls[element.id];
+    if (!activeLayerIds.has(element.id)) {
+      setKikikuruElementVisible(map, element.id, false);
+      return;
+    }
+    if (!tileUrl) return;
+    KIKIKURU_ZOOM_LEVELS.forEach((level) => {
+      ensureKikikuruRasterLayer(map, element, level, getKikikuruTileUrl(tileUrl, level));
+    });
+  });
+
+  setKikikuruVisible(map, true, activeLayerIds);
+}
+
+function ensureKikikuruRasterLayer(map, element, level, tileUrl) {
+  const sourceId = getKikikuruSourceId(element.id, level.id);
+  const layerId = getKikikuruLayerId(element.id, level.id);
+  const cachedTileUrl = kikikuruTileUrlCache.get(sourceId);
+
+  if (!map.getSource(sourceId)) {
+    addKikikuruRasterSourceAndLayer(map, element, level, tileUrl);
+    kikikuruTileUrlCache.set(sourceId, tileUrl);
+    return;
+  }
+
+  if (!map.getLayer(layerId)) {
+    addKikikuruRasterLayer(map, element, level);
+  }
+
+  if (!cachedTileUrl) {
+    kikikuruTileUrlCache.set(sourceId, tileUrl);
+    return;
+  }
+
+  if (cachedTileUrl && cachedTileUrl !== tileUrl && !map.isMoving()) {
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    map.removeSource(sourceId);
+    addKikikuruRasterSourceAndLayer(map, element, level, tileUrl);
+    kikikuruTileUrlCache.set(sourceId, tileUrl);
+  }
+}
+
+function addKikikuruRasterSourceAndLayer(map, element, level, tileUrl) {
+  const sourceId = getKikikuruSourceId(element.id, level.id);
+  map.addSource(sourceId, {
+    type: "raster",
+    tiles: [tileUrl],
+    tileSize: 256,
+    minzoom: level.z,
+    maxzoom: level.z,
+    bounds: [118, 20, 150, 48],
+    attribution: "気象庁"
+  });
+  addKikikuruRasterLayer(map, element, level);
+}
+
+function addKikikuruRasterLayer(map, element, level) {
+  const layerId = getKikikuruLayerId(element.id, level.id);
+  if (map.getLayer(layerId)) return;
+  map.addLayer({
+    id: layerId,
+    type: "raster",
+    source: getKikikuruSourceId(element.id, level.id),
+    minzoom: level.minzoom,
+    maxzoom: level.maxzoom,
+    paint: {
+      "raster-opacity": element.opacity ?? 0.8,
+      "raster-fade-duration": 0,
+      "raster-resampling": "nearest"
+    }
+  }, "jma-municipality-line");
+}
+
+function setKikikuruVisible(map, isVisible, activeLayerIds = null) {
+  KIKIKURU_ELEMENTS.forEach((element) => {
+    const shouldShow = isVisible && (!activeLayerIds || activeLayerIds.has(element.id));
+    setKikikuruElementVisible(map, element.id, shouldShow);
+  });
+}
+
+function setKikikuruElementVisible(map, elementId, isVisible) {
+  KIKIKURU_ZOOM_LEVELS.forEach((level) => {
+    const layerId = getKikikuruLayerId(elementId, level.id);
+    if (map?.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, "visibility", isVisible ? "visible" : "none");
+    }
+  });
+}
+
+function getActiveKikikuruLayerIds(activeLayer) {
+  return new Set([activeLayer === "inund" ? "inund" : "land"]);
+}
+
+function getKikikuruSourceId(id, zoomId) {
+  return `${KIKIKURU_SOURCE_PREFIX}-${id}-${zoomId}`;
+}
+
+function getKikikuruLayerId(id, zoomId) {
+  return `${KIKIKURU_LAYER_PREFIX}-${id}-${zoomId}`;
+}
+
+function getKikikuruTileUrl(tileUrl, level) {
   return tileUrl.replace("{z}", String(level.z));
 }
 
