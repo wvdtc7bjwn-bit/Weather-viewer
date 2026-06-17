@@ -18,10 +18,10 @@ const AMEDAS_RANKING_LIMIT = 20;
 const legendsByTab = {
   amedas: [["観測地点", "legend-amedas"]],
   warnings: [
-    ["注意報", "legend-advisory"],
-    ["警報", "legend-warning"],
+    ["特別警報", "legend-emergency"],
     ["危険警報", "legend-danger"],
-    ["特別警報", "legend-emergency"]
+    ["警報", "legend-warning"],
+    ["注意報", "legend-advisory"]
   ],
   typhoon: [
     ["暴風域 (25m/s以上)", "legend-typhoon-storm"],
@@ -41,6 +41,7 @@ export function updateLeftPanel(tab, state = {}) {
   setPanelTitleVisible(tab.id === "typhoon" && state.data?.hasTyphoon !== false);
   setText("panel-description", buildDescription(tab, state));
   setText("panel-time", buildTimeText(state));
+  setPanelTimeVisible(tab.id !== "radar");
   renderWarningSubTabs(tab, warningView);
   renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
@@ -262,7 +263,9 @@ function renderRadarControls(tab, state) {
   slider.disabled = frames.length <= 1 || state.status === "loading" || state.status === "error";
   slider.style.background = buildSliderBackground(activeIndex, latestObservationIndex, frames.length);
 
-  label.textContent = activeFrame?.label ?? (state.status === "loading" ? "取得中" : "--:--");
+  label.textContent = activeFrame?.label
+    ? `更新時刻: ${activeFrame.label}`
+    : (state.status === "loading" ? "更新時刻: 取得中" : "更新時刻: --");
   kind.textContent = activeFrame?.isForecast ? "予測" : "観測";
   kind.classList.toggle("forecast", Boolean(activeFrame?.isForecast));
 
@@ -640,6 +643,11 @@ function setText(id, value) {
 
 function setPanelTitleVisible(isVisible) {
   const element = document.getElementById("panel-title");
+  if (element) element.hidden = !isVisible;
+}
+
+function setPanelTimeVisible(isVisible) {
+  const element = document.getElementById("panel-time");
   if (element) element.hidden = !isVisible;
 }
 

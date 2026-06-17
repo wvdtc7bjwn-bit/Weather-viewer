@@ -105,7 +105,7 @@ export const AMEDAS_TEMPERATURE_LEVELS = [
   { min: 5, label: "5〜10", color: "#16e7dc" },
   { min: 0, label: "0〜5", color: "#17a9f5" },
   { min: -5, label: "-5〜0", color: "#0b22ff" },
-  { min: -Infinity, label: "-5未満（冬日）", color: "#2510b8" }
+  { min: -Infinity, label: "-5未満", color: "#2510b8" }
 ];
 
 export const AMEDAS_WIND_LEVELS = [

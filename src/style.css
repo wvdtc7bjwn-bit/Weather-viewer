@@ -41,7 +41,7 @@ button {
 #app {
   position: relative;
   display: grid;
-  grid-template-columns: 370px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   min-width: 0;
   background: #050914;
 }
@@ -49,9 +49,9 @@ button {
 #sidebar {
   position: relative;
   z-index: 30;
-  width: 370px;
+  width: 320px;
   height: 100vh;
-  padding: 18px 18px;
+  padding: 16px;
   overflow-y: auto;
   scrollbar-width: none;
   background: linear-gradient(180deg, rgba(25, 35, 54, 0.98) 0%, rgba(10, 16, 29, 0.99) 100%);
@@ -573,7 +573,7 @@ h2 {
 .typhoon-empty {
   grid-column: 1 / -1;
   margin: 0 0 18px;
-  padding: 16px;
+  padding: 14px 8px;
   border: 1px solid rgba(137, 170, 220, 0.22);
   border-radius: 14px;
   background:
@@ -581,15 +581,20 @@ h2 {
     rgba(8, 17, 31, 0.42);
   color: #f8fbff;
   font-weight: 900;
+  overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .typhoon-empty strong {
   display: block;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: #f8fbff;
-  font-size: 15px;
+  font-size: 12px;
   line-height: 1.45;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .typhoon-detail-item {
@@ -782,9 +787,12 @@ h2 {
 }
 
 #radar-time-label {
+  min-width: 0;
   color: #f8fbff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 900;
+  line-height: 1.25;
+  text-align: right;
 }
 
 .radar-time-slider {
@@ -941,20 +949,20 @@ h2 {
 
 #main-tabs {
   position: absolute;
-  top: 24px;
-  left: 394px;
+  top: 18px;
+  left: 328px;
   z-index: 500;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 10px;
 }
 
 .tab-button {
   position: relative;
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
+  width: 46px;
+  height: 46px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
@@ -972,8 +980,8 @@ h2 {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 27px;
-  height: 27px;
+  width: 25px;
+  height: 25px;
   transform: translate(-50%, -50%);
   background: var(--tab-icon-color, #f8fbff);
   opacity: 0.94;
@@ -1042,7 +1050,7 @@ h2 {
 .map-legend {
   right: 18px;
   bottom: 54px;
-  width: min(210px, calc(100vw - 560px));
+  width: min(210px, calc(100vw - 510px));
   min-width: 150px;
   margin-bottom: 0;
   padding: 10px;
@@ -1091,7 +1099,7 @@ h2 {
 }
 
 .map-legend.collapsed {
-  width: min(210px, calc(100vw - 560px));
+  width: min(210px, calc(100vw - 510px));
   min-width: 150px;
   padding: 10px;
 }
@@ -1206,12 +1214,12 @@ h2 {
   #main-tabs {
     top: max(26px, env(safe-area-inset-top));
     left: 16px;
-    gap: 12px;
+    gap: 10px;
   }
 
   .tab-button {
-    width: 50px;
-    height: 50px;
+    width: 46px;
+    height: 46px;
   }
 
   #clock {
