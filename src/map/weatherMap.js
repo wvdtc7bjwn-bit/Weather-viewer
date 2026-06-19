@@ -44,7 +44,7 @@ const RADAR_LAYER_PREFIX = "jma-nowcast-radar-z";
 const KIKIKURU_SOURCE_PREFIX = "jma-kikikuru";
 const KIKIKURU_LAYER_PREFIX = "jma-kikikuru";
 const KIKIKURU_ZOOM_LEVELS = [
-  { id: "z4", z: 4, minzoom: 4, maxzoom: 5 },
+  { id: "z4", z: 4, minzoom: 3, maxzoom: 5 },
   { id: "z6", z: 6, minzoom: 5, maxzoom: 7 },
   { id: "z8", z: 8, minzoom: 7, maxzoom: 10 },
   { id: "z10", z: 10, minzoom: 10, maxzoom: 22 }

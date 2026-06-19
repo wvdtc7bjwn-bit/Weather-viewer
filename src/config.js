@@ -10,7 +10,7 @@ function publicAsset(path) {
 export const DEFAULT_VIEW = {
   center: [37.6, 137.8],
   zoom: 5,
-  minZoom: 4,
+  minZoom: 3,
   maxZoom: 10
 };
 

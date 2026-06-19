@@ -570,6 +570,61 @@ h2 {
   display: none;
 }
 
+.typhoon-selector {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.typhoon-selector[hidden] {
+  display: none;
+}
+
+.typhoon-select-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dbe8fb;
+  font: inherit;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.typhoon-select-button.active {
+  border-color: rgba(86, 183, 242, 0.68);
+  background: linear-gradient(135deg, rgba(86, 183, 242, 0.24), rgba(72, 196, 107, 0.12));
+  color: #f8fbff;
+}
+
+.typhoon-select-button strong,
+.typhoon-select-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typhoon-select-button strong {
+  font-size: 13px;
+}
+
+.typhoon-select-button span {
+  min-width: max-content;
+  justify-self: end;
+  overflow: visible;
+  text-overflow: clip;
+  color: #aebbd0;
+  font-size: 11px;
+}
+
 .typhoon-empty {
   grid-column: 1 / -1;
   margin: 0 0 18px;
@@ -895,11 +950,72 @@ h2 {
     repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.92) 0 5px, transparent 5px 10px),
     #b400ff;
 }
-.legend-typhoon-storm { background: #ff8a00; border-color: rgba(255, 43, 18, 0.95); }
-.legend-typhoon-warning-area { background: rgba(255, 40, 0, 0.32); border-color: #ff2b12; }
-.legend-typhoon-strong { background: #ffeb1a; }
-.legend-typhoon-track { background: #f8fbff; }
-.legend-typhoon-forecast { background: rgba(248, 251, 255, 0.44); }
+.legend-typhoon-storm {
+  background: rgba(255, 40, 0, 0.55);
+  border-color: #ff2b12;
+}
+
+.legend-typhoon-strong {
+  background: rgba(255, 235, 26, 0.55);
+  border-color: #ffeb1a;
+}
+
+.legend-typhoon-warning-area,
+.legend-typhoon-forecast-circle,
+.legend-typhoon-forecast-route,
+.legend-typhoon-track,
+.legend-typhoon-center {
+  position: relative;
+  overflow: hidden;
+  background: rgba(248, 251, 255, 0.08);
+  border-color: rgba(248, 251, 255, 0.2);
+}
+
+.legend-typhoon-warning-area::before,
+.legend-typhoon-forecast-circle::before,
+.legend-typhoon-forecast-route::before,
+.legend-typhoon-track::before {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  top: 50%;
+  height: 2px;
+  content: "";
+  transform: translateY(-50%);
+}
+
+.legend-typhoon-warning-area::before {
+  background: #ff2b12;
+}
+
+.legend-typhoon-forecast-circle::before,
+.legend-typhoon-forecast-route::before {
+  background: repeating-linear-gradient(90deg, #f8fbff 0 4px, transparent 4px 7px);
+  opacity: 0.8;
+}
+
+.legend-typhoon-track::before {
+  background: rgba(248, 251, 255, 0.72);
+}
+
+.legend-typhoon-center::before,
+.legend-typhoon-center::after {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 2px;
+  background: #f8fbff;
+  content: "";
+}
+
+.legend-typhoon-center::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.legend-typhoon-center::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
 
 .legend-note {
   flex-basis: 100%;

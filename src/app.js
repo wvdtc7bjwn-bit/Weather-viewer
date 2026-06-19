@@ -1,7 +1,7 @@
 import { AMEDAS_METRICS, AUTO_REFRESH_INTERVAL_MS, AUTO_REFRESH_RESUME_THROTTLE_MS, KIKIKURU_LAYER_OPTIONS, TABS } from "./config.js";
 import { createWeatherMap } from "./map/weatherMap.js";
 import { setupTabs } from "./ui/tabs.js";
-import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupWarningAreaSelection, setupWarningSubTabs, updateLeftPanel } from "./ui/leftPanel.js";
+import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupTyphoonSelector, setupWarningAreaSelection, setupWarningSubTabs, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
 import { startClock } from "./ui/time.js";
@@ -40,6 +40,7 @@ export function createWeatherApp() {
   let activeAmedasMetric = AMEDAS_METRICS[0].id;
   let activeWarningView = "status";
   let activeKikikuruLayer = KIKIKURU_LAYER_OPTIONS[0]?.id ?? "land";
+  let activeTyphoonId = "";
   let weatherMap = null;
   let latestDataByTab = {};
   let radarPlayTimer = null;
@@ -105,6 +106,13 @@ export function createWeatherApp() {
     updateCurrentView(tab, latestDataByTab.warnings);
   }
 
+  function selectTyphoon(typhoonId) {
+    activeTyphoonId = String(typhoonId ?? "");
+    if (activeTab !== "typhoon") return;
+    const tab = TABS.find((item) => item.id === "typhoon");
+    updateCurrentView(tab, latestDataByTab.typhoon);
+  }
+
   function updateCurrentView(tab, data) {
     const displayData = buildDisplayData(tab, data);
     updateLeftPanel(tab, {
@@ -121,6 +129,7 @@ export function createWeatherApp() {
   function buildDisplayData(tab, data = {}) {
     if (tab.id === "amedas") return { ...data, activeMetric: activeAmedasMetric };
     if (tab.id === "warnings") return { ...data, activeWarningView, activeKikikuruLayer };
+    if (tab.id === "typhoon") return buildTyphoonDisplayData(data);
     if (tab.id !== "radar") return data;
 
     const frames = data.frames ?? [];
@@ -133,6 +142,27 @@ export function createWeatherApp() {
       latestTime: activeFrame?.label ?? data.latestTime,
       latestRawTime: activeFrame?.validtime ?? data.latestRawTime,
       radarTileUrl: activeFrame?.radarTileUrl ?? data.radarTileUrl
+    };
+  }
+
+  function buildTyphoonDisplayData(data = {}) {
+    const typhoons = data.typhoons ?? [];
+    if (!typhoons.length) {
+      activeTyphoonId = "";
+      return data;
+    }
+
+    const selected = typhoons.find((typhoon) => String(typhoon.id) === String(activeTyphoonId))
+      ?? typhoons[0];
+    activeTyphoonId = String(selected.id ?? "");
+
+    return {
+      ...data,
+      selectedTyphoonId: activeTyphoonId,
+      selectedTyphoon: selected,
+      details: selected.details ?? data.details,
+      latestTime: selected.updatedAt ?? data.latestTime,
+      updatedAt: selected.updatedAt ?? data.updatedAt
     };
   }
 
@@ -247,6 +277,7 @@ export function createWeatherApp() {
     setupWarningSubTabs({ onChange: selectWarningView });
     setupKikikuruLayerToggles({ onChange: selectKikikuruLayer });
     setupWarningAreaSelection();
+    setupTyphoonSelector({ onChange: selectTyphoon });
     setupRadarControls({
       onSeek: selectRadarFrame,
       onStep: stepRadarFrame,

@@ -24,11 +24,13 @@ const legendsByTab = {
     ["注意報", "legend-advisory"]
   ],
   typhoon: [
+    ["強風域 (15m/s以上)", "legend-typhoon-strong"],
     ["暴風域 (25m/s以上)", "legend-typhoon-storm"],
     ["暴風警戒域", "legend-typhoon-warning-area"],
-    ["強風域 (15m/s以上)", "legend-typhoon-strong"],
+    ["予報円", "legend-typhoon-forecast-circle"],
+    ["予想進路中心線", "legend-typhoon-forecast-route"],
     ["過去の経路", "legend-typhoon-track"],
-    ["警戒領域・予報円", "legend-typhoon-forecast"]
+    ["中心位置", "legend-typhoon-center"]
   ]
 };
 
@@ -38,15 +40,16 @@ export function updateLeftPanel(tab, state = {}) {
   const activeKikikuruLayer = state.activeKikikuruLayer ?? state.data?.activeKikikuruLayer ?? KIKIKURU_LAYER_OPTIONS[0]?.id;
   setText("mode-label", tab.label);
   setText("panel-title", buildPanelTitle(tab, state));
-  setPanelTitleVisible(tab.id === "typhoon" && state.data?.hasTyphoon !== false);
+  setPanelTitleVisible(false);
   setText("panel-description", buildDescription(tab, state));
   setText("panel-time", buildTimeText(state));
-  setPanelTimeVisible(tab.id !== "radar");
+  setPanelTimeVisible(tab.id !== "radar" && tab.id !== "typhoon");
   renderWarningSubTabs(tab, warningView);
   renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
   renderRadarControls(tab, state);
   renderWarningDetails(tab, state, warningView);
+  renderTyphoonSelector(tab, state);
   renderTyphoonDetails(tab, state);
   renderAmedasRanking(tab, state, amedasMetric);
   renderLegend(tab.id, amedasMetric.id, warningView);
@@ -109,6 +112,18 @@ export function setupRadarControls({ onSeek, onStep, onTogglePlay, onGoLatest })
   document.getElementById("radar-next")?.addEventListener("click", () => onStep?.(1));
   document.getElementById("radar-play")?.addEventListener("click", () => onTogglePlay?.());
   document.getElementById("radar-now")?.addEventListener("click", () => onGoLatest?.());
+}
+
+export function setupTyphoonSelector({ onChange }) {
+  const root = document.getElementById("typhoon-selector");
+  if (!root) return;
+
+  root.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest("[data-typhoon-id]");
+    if (!button) return;
+    onChange?.(button.dataset.typhoonId);
+  });
 }
 
 function buildDescription(tab, state) {
@@ -175,8 +190,7 @@ function renderLegend(tabId, amedasMetricId, warningView = "status") {
   if (tabId === "typhoon") {
     root.insertAdjacentHTML("beforeend", `
       <div class="legend-note">
-        ※赤い実線は暴風警戒域、白い点線は予報円・予想進路中心線<br>
-        ※白い×は台風の中心位置
+        ※白い点線は予報円と予想進路中心線、白い×は中心位置
       </div>
     `);
   }
@@ -272,6 +286,38 @@ function renderRadarControls(tab, state) {
   document.getElementById("radar-play")?.classList.toggle("playing", Boolean(state.radarPlaying));
   const playButton = document.getElementById("radar-play");
   if (playButton) playButton.textContent = state.radarPlaying ? "停止" : "再生";
+}
+
+function renderTyphoonSelector(tab, state) {
+  const root = document.getElementById("typhoon-selector");
+  if (!root) return;
+
+  const typhoons = state.data?.typhoons ?? [];
+  const shouldShow = tab.id === "typhoon" && state.status === "ok" && typhoons.length > 0;
+  root.hidden = !shouldShow;
+  if (!shouldShow) {
+    root.innerHTML = "";
+    return;
+  }
+
+  const activeId = String(state.data?.selectedTyphoonId ?? typhoons[0]?.id ?? "");
+  root.innerHTML = typhoons.map((typhoon, index) => {
+    const id = String(typhoon.id ?? `typhoon-${index}`);
+    const isActive = id === activeId;
+    const name = typhoon.details?.name ?? typhoon.name ?? `台風 ${index + 1}`;
+    const time = typhoon.updatedAt ? `<span>${escapeHtml(typhoon.updatedAt)}</span>` : "";
+    return `
+      <button
+        type="button"
+        class="typhoon-select-button${isActive ? " active" : ""}"
+        data-typhoon-id="${escapeHtml(id)}"
+        aria-pressed="${isActive ? "true" : "false"}"
+      >
+        <strong>${escapeHtml(name)}</strong>
+        ${time}
+      </button>
+    `;
+  }).join("");
 }
 
 export function setupWarningAreaSelection() {
@@ -600,12 +646,12 @@ function renderTyphoonDetails(tab, state) {
 
   const details = getTyphoonDetails(state);
   root.innerHTML = [
+    ["大きさ", details.size],
+    ["強さ", details.strength],
     ["中心気圧", details.pressure],
+    ["移動", formatTyphoonMovement(details.direction, details.speed)],
     ["最大風速", details.maxWind],
-    ["最大瞬間風速", details.maxGust],
-    ["移動方向", details.direction],
-    ["移動速度", details.speed],
-    ["中心位置", details.position]
+    ["最大瞬間風速", details.maxGust]
   ].map(([label, value]) => `
     <div class="typhoon-detail-item">
       <span>${escapeHtml(label)}</span>
@@ -625,8 +671,19 @@ function getTyphoonDetails(state) {
   return state.data?.details ?? buildEmptyTyphoonDetails("未取得");
 }
 
+function formatTyphoonMovement(direction, speed) {
+  const hasDirection = direction && direction !== "未取得" && direction !== "取得中";
+  const hasSpeed = speed && speed !== "未取得" && speed !== "取得中";
+  if (hasDirection && hasSpeed) return `${direction} ${speed}`;
+  if (hasDirection) return direction;
+  if (hasSpeed) return speed;
+  return direction || speed || "未取得";
+}
+
 function buildEmptyTyphoonDetails(value) {
   return {
+    size: value,
+    strength: value,
     pressure: value,
     maxWind: value,
     maxGust: value,

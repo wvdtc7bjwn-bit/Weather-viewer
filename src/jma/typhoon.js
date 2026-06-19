@@ -121,6 +121,8 @@ function normalizeTyphoon(item, index) {
     stormRadius: pickRadius(item, ["stormRadius", "wind25mRadius", "violentWindRadius", "radius25m", "暴風域"]),
     details: {
       name,
+      size: formatClassification(pickValue(item, ["size", "scale", "typhoonSize", "stormSize", "classificationSize", "大きさ"])),
+      strength: formatClassification(pickValue(item, ["strength", "intensity", "typhoonStrength", "stormIntensity", "classificationIntensity", "強さ"])),
       pressure: formatWithUnit(pickValue(item, ["pressure", "centralPressure", "centerPressure", "pres", "中心気圧"]), "hPa"),
       maxWind: formatWithUnit(pickValue(item, ["maxWind", "maximumWind", "maxWindSpeed", "wind", "windSpeed", "最大風速"]), "m/s"),
       maxGust: formatWithUnit(pickValue(item, ["maxGust", "maximumGust", "maxInstantWind", "gust", "最大瞬間風速"]), "m/s"),
@@ -191,6 +193,8 @@ function normalizeJmaTyphoon(item, index) {
     stormRadius,
     details: {
       name,
+      size: formatClassification(specNow.scale ?? current.scale ?? null),
+      strength: formatClassification(specNow.intensity ?? current.intensity ?? null),
       pressure: formatWithUnit(specNow.pressure ?? current.pressure ?? null, "hPa"),
       maxWind: formatWithUnit(specNow.maximumWind?.sustained?.["m/s"] ?? specNow.maximumWind?.sustained?.mps ?? null, "m/s"),
       maxGust: formatWithUnit(specNow.maximumWind?.gust?.["m/s"] ?? specNow.maximumWind?.gust?.mps ?? null, "m/s"),
@@ -221,6 +225,8 @@ function pickJmaTyphoonName(title, item, index) {
 function buildEmptyDetails(value) {
   return {
     name: value,
+    size: value,
+    strength: value,
     pressure: value,
     maxWind: value,
     maxGust: value,
@@ -255,6 +261,16 @@ function isNonNumericTyphoonNumber(value) {
 function formatTropicalDepressionName(number) {
   const suffix = number === null || number === undefined ? "" : String(number).trim();
   return suffix ? `熱帯低気圧${suffix}` : "熱帯低気圧";
+}
+
+function formatClassification(value) {
+  if (value === null || value === undefined || value === "") return "未取得";
+  if (typeof value === "object") {
+    return formatClassification(value.jp ?? value.ja ?? value.label ?? value.name ?? value.en ?? null);
+  }
+  const text = String(value).trim();
+  if (!text || text === "-") return "-";
+  return text;
 }
 
 function pickPoint(item, keys) {
