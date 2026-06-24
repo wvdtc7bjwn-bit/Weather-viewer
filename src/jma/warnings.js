@@ -71,6 +71,12 @@ const WARNING_LEVEL_NUMBERS = {
 
 const WARNING_LEVEL_TARGETS = ["河川氾濫", "洪水", "大雨", "土砂災害", "高潮"];
 
+const EARLY_WARNING_WIND_ONLY_CLASS10_CODES = new Set([
+  "130020", "130030", "130040",
+  "460040",
+  "471010", "471020", "471030", "472000", "473000", "474010", "474020"
+]);
+
 export function getPrefectureNameByCode(areaCode) {
   return PREFECTURE_NAMES[String(areaCode ?? "").slice(0, 2)] ?? "その他";
 }
@@ -271,7 +277,7 @@ function buildOutlookSlot(timeDefine, value, valueType, showLevelLabel = false) 
 }
 
 function normalizeOutlookType(type) {
-  return String(type ?? "").replace("危険度", "");
+  return normalizeWeatherHazardType(type);
 }
 
 function warningOutlookLevel(code) {
@@ -476,11 +482,20 @@ function buildEarlyWarningData(probabilityReports, municipalityIndex, areaHierar
 
 function filterEarlyWarningRowsForArea(rows, areaCode, noWaveTideIndex = {}) {
   const code = String(areaCode ?? "");
-  return rows.filter((row) => {
-    if (row.type === "波浪") return !noWaveTideIndex.wave?.has(code);
-    if (row.type === "高潮") return !noWaveTideIndex.tide?.has(code);
-    return true;
+  return rows.flatMap((row) => {
+    if (row.type === "波浪" && noWaveTideIndex.wave?.has(code)) return [];
+    if (row.type === "高潮" && noWaveTideIndex.tide?.has(code)) return [];
+    if (!hasApplicableEarlyWarningSlots(row)) return [];
+
+    if (row.type === "暴風(雪)" && EARLY_WARNING_WIND_ONLY_CLASS10_CODES.has(code)) {
+      return [{ ...row, type: "暴風" }];
+    }
+    return [row];
   });
+}
+
+function hasApplicableEarlyWarningSlots(row) {
+  return (row.slots ?? []).some((slot) => slot.available !== false);
 }
 
 function flattenProbabilityReports(probabilityReports) {
@@ -496,9 +511,12 @@ function buildEarlyWarningRows(properties = [], slots = []) {
 
     const values = Array.isArray(property?.probabilities) ? property.probabilities : [];
     const rowSlots = slots.map((slot, index) => {
-      const label = normalizeEarlyProbability(values[index]);
+      const rawLabel = String(values[index] ?? "").trim();
+      const label = normalizeEarlyProbability(rawLabel);
       return {
         ...slot,
+        rawLabel,
+        available: rawLabel !== "なし",
         label,
         level: earlyProbabilityLevel(label)
       };
@@ -550,14 +568,26 @@ function getJstDatePart(date, type) {
 }
 
 function normalizeEarlyWarningType(type) {
+  return normalizeWeatherHazardType(type);
+}
+
+function normalizeWeatherHazardType(type) {
   const text = String(type ?? "");
+  if (!text) return "";
   if (text.includes("土砂災害")) return "土砂災害";
+  if (text.includes("河川氾濫")) return "河川氾濫";
+  if (text.includes("洪水")) return "洪水";
   if (text.includes("大雨") || text.includes("雨の")) return "大雨";
-  if (text.includes("雪")) return "大雪";
-  if (text.includes("風")) return "暴風・暴風雪";
-  if (text.includes("波")) return "波浪";
-  if (text.includes("潮")) return "高潮";
-  return "";
+  if (text.includes("風（風雪）") || text.includes("風(風雪)")) return "暴風(雪)";
+  if (text.includes("暴風雪") || text.includes("風雪")) return "暴風雪";
+  if (text.includes("暴風") || text.includes("強風") || text.includes("風")) return "暴風";
+  if (text.includes("大雪") || text.includes("雪")) return "大雪";
+  if (text.includes("波浪") || text.includes("波")) return "波浪";
+  if (text.includes("高潮") || text.includes("潮")) return "高潮";
+  return text
+    .replace("危険度", "")
+    .replace("の警報級の可能性", "")
+    .trim();
 }
 
 function normalizeEarlyProbability(value) {
@@ -586,7 +616,11 @@ function mergeEarlyWarningRows(currentRows, nextRows) {
     row.slots.forEach((slot) => {
       const key = earlySlotKey(slot);
       const previous = slotsByKey.get(key);
-      if (!previous || earlySeverityValue(slot.level) > earlySeverityValue(previous.level)) {
+      if (
+        !previous ||
+        earlySeverityValue(slot.level) > earlySeverityValue(previous.level) ||
+        (previous.available === false && slot.available !== false)
+      ) {
         slotsByKey.set(key, slot);
       }
     });
@@ -634,7 +668,7 @@ function earlySeverityValue(level) {
 }
 
 function earlyWarningTypeOrder(type) {
-  return ["大雨", "土砂災害", "大雪", "暴風・暴風雪", "波浪", "高潮"].indexOf(type) + 1 || 99;
+  return ["大雨", "土砂災害", "大雪", "暴風(雪)", "暴風雪", "暴風", "波浪", "高潮"].indexOf(type) + 1 || 99;
 }
 
 function buildEarlyMunicipalityAreas(areas, municipalityIndex) {

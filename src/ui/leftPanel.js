@@ -673,6 +673,7 @@ function outlookSlotKey(slot) {
 }
 
 function formatOutlookCellLabel(slot) {
+  if (slot?.available === false) return "";
   if (slot?.label) return slot.label;
   if (typeof slot?.level === "number" && slot.level >= 2) return "";
   return "-";
