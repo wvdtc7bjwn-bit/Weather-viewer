@@ -539,18 +539,20 @@ export function createWeatherMap(elementId) {
       const feature = event.features?.[0];
       const area = warningAreasByCode.get(String(feature?.properties?.code ?? ""));
       if (!area) return;
+      const selectedAreaCode = area.displayAreaCode ?? area.areaCode;
       window.dispatchEvent(new CustomEvent("weather-warning-area-select", {
         detail: {
-          areaCode: area.areaCode,
-          areaName: area.areaName
+          areaCode: selectedAreaCode,
+          areaName: area.displayAreaName ?? area.areaName
         }
       }));
     });
   }
 
   function updateWarningAreaLookup(mode, data = {}) {
-    warningAreasByCode = mode === "warnings" && data?.activeWarningView !== "kikikuru" && Array.isArray(data?.activeAreas)
-      ? new Map(data.activeAreas.map((area) => [String(area.areaCode), area]))
+    const areas = getActiveWarningOverlayAreas(mode, data);
+    warningAreasByCode = areas.length > 0
+      ? new Map(areas.map((area) => [String(area.areaCode), area]))
       : new Map();
   }
 
@@ -828,9 +830,7 @@ function computeGeometryBounds(geometry) {
 function updateWarningMunicipalityPaint(map, mode, data = {}) {
   if (!map?.getLayer(WARNING_OVERLAY_LAYER_ID)) return;
 
-  const activeAreas = mode === "warnings" && data?.activeWarningView !== "kikikuru" && Array.isArray(data?.activeAreas)
-    ? data.activeAreas
-    : [];
+  const activeAreas = getActiveWarningOverlayAreas(mode, data);
   void updateWarningMunicipalitySource(map, activeAreas);
 
   if (activeAreas.length === 0) {
@@ -840,9 +840,14 @@ function updateWarningMunicipalityPaint(map, mode, data = {}) {
     return;
   }
 
+  const isEarlyWarningView = mode === "warnings" && data?.activeWarningView === "early";
   map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-color", [
     "match",
     ["get", "warningLevel"],
+    "high",
+    getEarlyWarningColor("high"),
+    "middle",
+    getEarlyWarningColor("middle"),
     "emergency",
     getWarningColor("emergency"),
     "danger",
@@ -858,11 +863,21 @@ function updateWarningMunicipalityPaint(map, mode, data = {}) {
     ["linear"],
     ["zoom"],
     4,
-    0.92,
+    isEarlyWarningView ? 0.82 : 0.92,
     8,
-    0.96
+    isEarlyWarningView ? 0.88 : 0.96
   ]);
-  updateWarningHatchPaint(map, activeAreas);
+  updateWarningHatchPaint(map, isEarlyWarningView ? [] : activeAreas);
+}
+
+function getActiveWarningOverlayAreas(mode, data = {}) {
+  if (mode !== "warnings" || data?.activeWarningView === "kikikuru") return [];
+  if (data?.activeWarningView === "early") {
+    return Array.isArray(data?.earlyMunicipalityAreas)
+      ? data.earlyMunicipalityAreas.filter((area) => area.level === "high" || area.level === "middle")
+      : [];
+  }
+  return Array.isArray(data?.activeAreas) ? data.activeAreas : [];
 }
 
 async function updateWarningMunicipalitySource(map, activeAreas) {
@@ -1153,6 +1168,12 @@ function getWarningColor(level) {
   if (level === "danger") return "#b400ff";
   if (level === "warning") return "#ff2b12";
   return "#fff000";
+}
+
+function getEarlyWarningColor(level) {
+  if (level === "high") return "#ff6b73";
+  if (level === "middle") return "#ffc8b8";
+  return "rgba(0, 0, 0, 0)";
 }
 
 function createEmptyFeatureCollection() {

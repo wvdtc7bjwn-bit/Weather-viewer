@@ -22,6 +22,8 @@ export const JMA_ENDPOINTS = {
   amedasTimeList: "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",
   warningsBase: "https://www.jma.go.jp/bosai/warning/data/r8",
   warningTimelineBase: "https://www.jma.go.jp/bosai/warning_timeline/data",
+  probabilityMap: "https://www.jma.go.jp/bosai/probability/data/probability/r8/map.json",
+  noWaveTide: "https://www.jma.go.jp/bosai/warning/const/no_wave_tide.json",
   kikikuruTimeList: "https://www.jma.go.jp/bosai/jmatile/data/risk/targetTimes.json",
   kikikuruTileBase: "https://www.jma.go.jp/bosai/jmatile/data/risk",
   areaConst: "https://www.jma.go.jp/bosai/common/const/area.json",

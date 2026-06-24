@@ -97,7 +97,15 @@ export function createWeatherApp() {
 
   function selectKikikuruLayer(layerId) {
     if (layerId === "status") {
-      activeWarningView = "status";
+      activeWarningView = activeWarningView === "status" ? "early" : "status";
+      if (activeTab !== "warnings") return;
+      const tab = TABS.find((item) => item.id === "warnings");
+      updateCurrentView(tab, latestDataByTab.warnings);
+      return;
+    }
+
+    if (layerId === "early") {
+      activeWarningView = "early";
       if (activeTab !== "warnings") return;
       const tab = TABS.find((item) => item.id === "warnings");
       updateCurrentView(tab, latestDataByTab.warnings);

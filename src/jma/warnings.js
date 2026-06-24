@@ -76,22 +76,31 @@ export function getPrefectureNameByCode(areaCode) {
 }
 
 export async function fetchWarningMap() {
-  const [warningReports, warningTimelineReports, municipalityGeoJson] = await Promise.all([
+  const [warningReports, warningTimelineReports, municipalityGeoJson, areaConst, earlyWarningReports, noWaveTideConst] = await Promise.all([
     fetchWarningReports(),
     fetchWarningTimelineReports(),
-    fetchJson(JMA_ENDPOINTS.warningMunicipalities)
+    fetchJson(JMA_ENDPOINTS.warningMunicipalities),
+    fetchJson(JMA_ENDPOINTS.areaConst),
+    fetchEarlyWarningReports(),
+    fetchNoWaveTideConst()
   ]);
   const municipalityIndex = buildMunicipalityIndex(municipalityGeoJson);
+  const areaHierarchy = buildAreaHierarchy(areaConst, municipalityIndex);
+  const noWaveTideIndex = buildNoWaveTideIndex(noWaveTideConst);
   const outlookByAreaCode = buildWarningOutlookMap(warningTimelineReports, municipalityIndex);
   const areaMap = buildWarningAreaMap(warningReports, municipalityIndex, outlookByAreaCode);
   const activeAreas = [...areaMap.values()];
   const groups = buildWarningGroups(activeAreas);
+  const earlyWarnings = buildEarlyWarningData(earlyWarningReports, municipalityIndex, areaHierarchy, noWaveTideIndex);
   const latestReportTime = getLatestReportTime(warningReports);
 
   return {
     raw: warningReports,
     groups,
     activeAreas,
+    earlyWarnings,
+    earlyAreas: earlyWarnings.areas,
+    earlyMunicipalityAreas: earlyWarnings.municipalityAreas,
     summary: `発表中 ${activeAreas.length} 市区町村`,
     latestTime: parseJmaTime(latestReportTime) ?? latestReportTime,
     updatedAt: parseJmaTime(latestReportTime) ?? "取得済み"
@@ -125,6 +134,25 @@ async function fetchWarningTimelineReports() {
     })
   );
   return reportsByOffice.filter(Boolean);
+}
+
+async function fetchEarlyWarningReports() {
+  try {
+    const reports = await fetchJson(JMA_ENDPOINTS.probabilityMap);
+    return Array.isArray(reports) ? reports : [];
+  } catch (error) {
+    console.warn("[Weather Viewer] early warning probability JSON unavailable", error);
+    return [];
+  }
+}
+
+async function fetchNoWaveTideConst() {
+  try {
+    return await fetchJson(JMA_ENDPOINTS.noWaveTide);
+  } catch (error) {
+    console.warn("[Weather Viewer] no-wave/tide JSON unavailable", error);
+    return {};
+  }
 }
 
 function buildWarningAreaMap(warningReports, municipalityIndex, outlookByAreaCode = new Map()) {
@@ -296,10 +324,358 @@ function buildMunicipalityIndex(geoJson) {
   return { byCode, byParentCode };
 }
 
+function buildAreaHierarchy(areaConst, municipalityIndex) {
+  const nodes = new Map();
+  ["offices", "class10s", "class15s", "class20s"].forEach((bucketName) => {
+    const bucket = areaConst?.[bucketName] ?? {};
+    Object.entries(bucket).forEach(([code, value]) => {
+      const normalizedCode = String(code);
+      const current = nodes.get(normalizedCode) ?? {
+        code: normalizedCode,
+        name: "",
+        parent: "",
+        children: new Set(),
+        buckets: new Set()
+      };
+      current.name = current.name || value?.name || "";
+      current.parent = current.parent || String(value?.parent ?? "");
+      current.buckets.add(bucketName);
+      (value?.children ?? []).forEach((childCode) => current.children.add(String(childCode)));
+      nodes.set(normalizedCode, current);
+    });
+  });
+
+  function collectMunicipalityCodes(areaCode) {
+    const result = new Set();
+    const visited = new Set();
+
+    function walk(code) {
+      const normalizedCode = String(code ?? "");
+      if (!normalizedCode || visited.has(normalizedCode)) return;
+      visited.add(normalizedCode);
+
+      if (municipalityIndex.byCode.has(normalizedCode)) {
+        result.add(normalizedCode);
+        return;
+      }
+
+      const children = nodes.get(normalizedCode)?.children ?? [];
+      [...children].forEach(walk);
+    }
+
+    walk(areaCode);
+    return [...result];
+  }
+
+  function getAreaName(areaCode) {
+    const code = String(areaCode ?? "");
+    return nodes.get(code)?.name
+      ?? municipalityIndex.byCode.get(code)?.name
+      ?? "";
+  }
+
+  function getDisplayAreaCodes(areaCode) {
+    const normalizedCode = String(areaCode ?? "");
+    const class10Children = [...(nodes.get(normalizedCode)?.children ?? [])]
+      .map((code) => String(code))
+      .filter((code) => code !== normalizedCode && nodes.get(code)?.buckets?.has("class10s"))
+      .filter((code) => collectMunicipalityCodes(code).length > 0);
+    return class10Children.length > 0 ? class10Children : [normalizedCode];
+  }
+
+  return { collectMunicipalityCodes, getAreaName, getDisplayAreaCodes };
+}
+
+function buildNoWaveTideIndex(noWaveTideConst = {}) {
+  return {
+    wave: buildNoWaveTideCodeSet(noWaveTideConst.wave),
+    tide: buildNoWaveTideCodeSet(noWaveTideConst.tide)
+  };
+}
+
+function buildNoWaveTideCodeSet(entry = {}) {
+  const codes = new Set();
+  (entry.class10s ?? []).forEach((code) => codes.add(String(code)));
+  (entry.class15s ?? []).forEach((code) => codes.add(String(code)));
+  Object.values(entry.class20s ?? {}).flat().forEach((code) => codes.add(String(code)));
+  return codes;
+}
+
 function expandToMunicipalityCodes(areaCode, municipalityIndex) {
   const direct = municipalityIndex.byCode.get(areaCode);
   if (direct) return [direct];
   return municipalityIndex.byParentCode.get(areaCode) ?? [{ code: areaCode, name: "" }];
+}
+
+function buildEarlyWarningData(probabilityReports, municipalityIndex, areaHierarchy, noWaveTideIndex = {}) {
+  const areasByCode = new Map();
+  const reports = flattenProbabilityReports(probabilityReports)
+    .sort((a, b) => new Date(a.reportDatetime).getTime() - new Date(b.reportDatetime).getTime());
+
+  reports.forEach((report) => {
+    (report.timeSeries ?? []).forEach((series) => {
+      const slots = buildEarlyWarningSlots(series.timeDefines ?? []);
+      (series.areas ?? []).forEach((area) => {
+        const areaCode = String(area.code ?? "");
+        if (!areaCode) return;
+
+        const rows = buildEarlyWarningRows(area.properties ?? [], slots);
+        if (rows.length === 0) return;
+
+        areaHierarchy.getDisplayAreaCodes(areaCode).forEach((displayAreaCode) => {
+          const municipalityCodes = areaHierarchy.collectMunicipalityCodes(displayAreaCode);
+          if (municipalityCodes.length === 0) return;
+          const rowsForArea = filterEarlyWarningRowsForArea(rows, displayAreaCode, noWaveTideIndex);
+          if (rowsForArea.length === 0) return;
+
+          const current = areasByCode.get(displayAreaCode) ?? {
+            kind: "early",
+            areaCode: displayAreaCode,
+            sourceAreaCodes: [],
+            areaName: areaHierarchy.getAreaName(displayAreaCode) || `エリア ${displayAreaCode}`,
+            prefectureCode: displayAreaCode.slice(0, 2),
+            prefecture: getPrefectureNameByCode(displayAreaCode),
+            updatedAt: report.reportDatetime,
+            level: "none",
+            probabilities: [],
+            rows: [],
+            municipalityCodes: []
+          };
+
+          current.sourceAreaCodes = [...new Set([...current.sourceAreaCodes, areaCode])];
+          current.updatedAt = chooseLatestTime(current.updatedAt, report.reportDatetime);
+          current.rows = mergeEarlyWarningRows(current.rows, rowsForArea);
+          current.probabilities = buildEarlyWarningSummary(current.rows);
+          current.level = highestEarlyWarningLevel(current.probabilities);
+          current.municipalityCodes = [...new Set([...current.municipalityCodes, ...municipalityCodes])];
+          areasByCode.set(displayAreaCode, current);
+        });
+      });
+    });
+  });
+
+  const areas = [...areasByCode.values()]
+    .sort((a, b) =>
+      earlySeverityValue(b.level) - earlySeverityValue(a.level) ||
+      String(a.areaCode).localeCompare(String(b.areaCode), "ja")
+    );
+  const municipalityAreas = buildEarlyMunicipalityAreas(areas, municipalityIndex);
+  const groups = buildEarlyWarningGroups(areas);
+  const latestRawTime = reports.reduce((latest, report) => chooseLatestTime(latest, report.reportDatetime), "");
+  const latestTime = parseJmaTime(latestRawTime) ?? latestRawTime;
+
+  return {
+    raw: probabilityReports,
+    groups,
+    areas,
+    municipalityAreas,
+    latestTime,
+    updatedAt: latestTime || "未取得"
+  };
+}
+
+function filterEarlyWarningRowsForArea(rows, areaCode, noWaveTideIndex = {}) {
+  const code = String(areaCode ?? "");
+  return rows.filter((row) => {
+    if (row.type === "波浪") return !noWaveTideIndex.wave?.has(code);
+    if (row.type === "高潮") return !noWaveTideIndex.tide?.has(code);
+    return true;
+  });
+}
+
+function flattenProbabilityReports(probabilityReports) {
+  return (probabilityReports ?? [])
+    .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+    .filter((report) => report?.reportDatetime && Array.isArray(report?.timeSeries));
+}
+
+function buildEarlyWarningRows(properties = [], slots = []) {
+  return properties.flatMap((property) => {
+    const type = normalizeEarlyWarningType(property?.type);
+    if (!type) return [];
+
+    const values = Array.isArray(property?.probabilities) ? property.probabilities : [];
+    const rowSlots = slots.map((slot, index) => {
+      const label = normalizeEarlyProbability(values[index]);
+      return {
+        ...slot,
+        label,
+        level: earlyProbabilityLevel(label)
+      };
+    });
+
+    return [{
+      type,
+      localName: "",
+      slots: rowSlots
+    }];
+  });
+}
+
+function buildEarlyWarningSlots(timeDefines = []) {
+  const dates = timeDefines.map((value) => new Date(value));
+  return timeDefines.map((value, index) => {
+    const start = dates[index];
+    const next = dates[index + 1];
+    const durationHours = Number.isFinite(next?.getTime?.())
+      ? Math.max(1, Math.round((next.getTime() - start.getTime()) / (60 * 60 * 1000)))
+      : 24;
+    return {
+      time: value,
+      duration: `PT${durationHours}H`,
+      displayLabel: formatEarlySlotLabel(start, durationHours)
+    };
+  });
+}
+
+function formatEarlySlotLabel(start, durationHours) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "--";
+  const day = getJstDatePart(start, "day");
+  if (durationHours >= 23) return `${Number(day)}日`;
+
+  const startHour = Number(getJstDatePart(start, "hour"));
+  const endHourValue = startHour + durationHours;
+  const endHour = endHourValue >= 24 ? 24 : endHourValue;
+  return `${Number(day)}日 ${String(startHour).padStart(2, "0")}-${String(endHour).padStart(2, "0")}`;
+}
+
+function getJstDatePart(date, type) {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Tokyo"
+  }).formatToParts(date);
+  return parts.find((part) => part.type === type)?.value ?? "00";
+}
+
+function normalizeEarlyWarningType(type) {
+  const text = String(type ?? "");
+  if (text.includes("土砂災害")) return "土砂災害";
+  if (text.includes("大雨") || text.includes("雨の")) return "大雨";
+  if (text.includes("雪")) return "大雪";
+  if (text.includes("風")) return "暴風・暴風雪";
+  if (text.includes("波")) return "波浪";
+  if (text.includes("潮")) return "高潮";
+  return "";
+}
+
+function normalizeEarlyProbability(value) {
+  const text = String(value ?? "").trim();
+  if (text === "高" || text === "中") return text;
+  return "";
+}
+
+function earlyProbabilityLevel(label) {
+  if (label === "高") return "high";
+  if (label === "中") return "middle";
+  return "none";
+}
+
+function mergeEarlyWarningRows(currentRows, nextRows) {
+  const rowsByType = new Map(currentRows.map((row) => [row.type, { ...row, slots: [...row.slots] }]));
+
+  nextRows.forEach((row) => {
+    const current = rowsByType.get(row.type);
+    if (!current) {
+      rowsByType.set(row.type, { ...row, slots: [...row.slots] });
+      return;
+    }
+
+    const slotsByKey = new Map(current.slots.map((slot) => [earlySlotKey(slot), slot]));
+    row.slots.forEach((slot) => {
+      const key = earlySlotKey(slot);
+      const previous = slotsByKey.get(key);
+      if (!previous || earlySeverityValue(slot.level) > earlySeverityValue(previous.level)) {
+        slotsByKey.set(key, slot);
+      }
+    });
+    current.slots = [...slotsByKey.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  });
+
+  return [...rowsByType.values()].sort((a, b) => earlyWarningTypeOrder(a.type) - earlyWarningTypeOrder(b.type));
+}
+
+function earlySlotKey(slot) {
+  return `${slot.time}|${slot.duration}`;
+}
+
+function buildEarlyWarningSummary(rows) {
+  const activeSummaries = rows
+    .map((row) => {
+      const level = highestEarlyWarningLevel(row.slots);
+      if (level === "none") return null;
+      return {
+        type: row.type,
+        label: row.slots.some((slot) => slot.level === "high") ? "高" : "中",
+        level
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) =>
+      earlySeverityValue(b.level) - earlySeverityValue(a.level) ||
+      earlyWarningTypeOrder(a.type) - earlyWarningTypeOrder(b.type)
+    );
+  return activeSummaries.length > 0
+    ? activeSummaries
+    : [{ type: "今後の情報等に留意", label: "", level: "none" }];
+}
+
+function highestEarlyWarningLevel(items = []) {
+  return items.reduce((current, item) =>
+    earlySeverityValue(item.level) > earlySeverityValue(current) ? item.level : current
+  , "none");
+}
+
+function earlySeverityValue(level) {
+  if (level === "high") return 2;
+  if (level === "middle") return 1;
+  return 0;
+}
+
+function earlyWarningTypeOrder(type) {
+  return ["大雨", "土砂災害", "大雪", "暴風・暴風雪", "波浪", "高潮"].indexOf(type) + 1 || 99;
+}
+
+function buildEarlyMunicipalityAreas(areas, municipalityIndex) {
+  const municipalityAreasByCode = new Map();
+
+  areas.forEach((area) => {
+    area.municipalityCodes.forEach((municipalityCode) => {
+      const previous = municipalityAreasByCode.get(municipalityCode);
+      if (previous && earlySeverityValue(previous.level) >= earlySeverityValue(area.level)) return;
+      municipalityAreasByCode.set(municipalityCode, {
+        ...area,
+        areaCode: municipalityCode,
+        areaName: municipalityIndex.byCode.get(municipalityCode)?.name ?? area.areaName,
+        displayAreaCode: area.areaCode,
+        displayAreaName: area.areaName
+      });
+    });
+  });
+
+  return [...municipalityAreasByCode.values()];
+}
+
+function buildEarlyWarningGroups(areas) {
+  const grouped = new Map();
+
+  areas.forEach((area) => {
+    if (!grouped.has(area.prefecture)) grouped.set(area.prefecture, []);
+    grouped.get(area.prefecture).push(area);
+  });
+
+  return [...grouped.entries()]
+    .map(([prefecture, areasInGroup]) => ({
+      prefecture,
+      level: highestEarlyWarningLevel(areasInGroup),
+      count: areasInGroup.length,
+      areas: areasInGroup
+    }))
+    .sort((a, b) =>
+      earlySeverityValue(b.level) - earlySeverityValue(a.level) ||
+      prefectureOrder(a.prefecture) - prefectureOrder(b.prefecture)
+    );
 }
 
 function buildWarningGroups(activeAreas) {

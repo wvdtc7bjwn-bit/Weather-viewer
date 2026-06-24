@@ -467,6 +467,22 @@ h2 {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14) inset;
 }
 
+.early-warning-badge-middle {
+  background: #ffc8b8;
+  color: #24110e;
+}
+
+.early-warning-badge-high {
+  background: #ff6b73;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+}
+
+.early-warning-badge-none {
+  background: rgba(244, 247, 255, 0.9);
+  color: #152033;
+}
+
 .warning-empty {
   padding: 14px;
   border-radius: 10px;
@@ -693,6 +709,21 @@ h2 {
 .warning-outlook-level-5 {
   background: #100010;
   color: #fff;
+}
+
+.warning-outlook-level-middle {
+  background: #f2d12e;
+  color: #08111d;
+}
+
+.warning-outlook-level-high {
+  background: #ff6b73;
+  color: #fff;
+}
+
+.warning-outlook-level-none {
+  background: rgba(255, 255, 255, 0.06);
+  color: #8190a8;
 }
 
 .typhoon-detail-grid {
@@ -1091,6 +1122,8 @@ h2 {
     repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.92) 0 5px, transparent 5px 10px),
     #b400ff;
 }
+.legend-early-middle { background: #ffc8b8; }
+.legend-early-high { background: #ff6b73; }
 .legend-typhoon-storm {
   background: rgba(255, 40, 0, 0.55);
   border-color: #ff2b12;

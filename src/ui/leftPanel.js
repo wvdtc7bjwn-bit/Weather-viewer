@@ -131,6 +131,9 @@ function buildDescription(tab, state) {
       const layerLabel = KIKIKURU_LAYER_OPTIONS.find((element) => element.id === state.data?.activeKikikuruLayer)?.label ?? "キキクル";
       return `${layerLabel}を地図上に重ねて表示しています。`;
     }
+    if (state.data?.activeWarningView === "early") {
+      return "早期注意情報（警報級の可能性）を発表区域ごとに表示しています。";
+    }
     return "都道府県ごとに、市区町村の注意報・警報・危険警報・特別警報を表示しています。";
   }
   if (tab.id === "typhoon") {
@@ -159,6 +162,10 @@ function buildTimeText(state) {
   if (state.data?.hasTyphoon === false) return "更新時刻: --";
   if (state.data?.activeWarningView === "kikikuru") {
     const value = state.data?.kikikuru?.latestTime;
+    return value ? `更新時刻: ${value}` : "更新時刻: 未取得";
+  }
+  if (state.data?.activeWarningView === "early") {
+    const value = state.data?.earlyWarnings?.latestTime ?? state.data?.earlyWarnings?.updatedAt;
     return value ? `更新時刻: ${value}` : "更新時刻: 未取得";
   }
   const value = state.data?.latestTime ?? state.data?.updatedAt ?? state.data?.summary;
@@ -196,6 +203,12 @@ function buildLegendItems(tabId, amedasMetricId, warningView = "status") {
   if (tabId === "warnings" && warningView === "kikikuru") {
     return KIKIKURU_LEVELS.map((level) => [level.label, "", level.color]);
   }
+  if (tabId === "warnings" && warningView === "early") {
+    return [
+      ["高", "legend-early-high"],
+      ["中", "legend-early-middle"]
+    ];
+  }
   return legendsByTab[tabId] ?? [];
 }
 
@@ -214,8 +227,9 @@ function renderKikikuruLayerTabs(tab, warningView, activeLayer) {
     ?? KIKIKURU_LAYER_OPTIONS[0]
     ?? { id: "land", label: "土砂キキクル" };
   const activeId = warningView === "kikikuru" ? "kikikuru" : "status";
+  const statusLabel = warningView === "early" ? "早期注意情報" : "発表状況";
   const options = [
-    { id: "status", label: "発表状況" },
+    { id: "status", label: statusLabel },
     { id: "kikikuru", label: activeKikikuruOption.label }
   ];
 
@@ -454,7 +468,7 @@ function renderWarningDetails(tab, state, warningView = "status") {
   const root = document.getElementById("warning-detail-list");
   if (!root) return;
 
-  const isWarnings = tab.id === "warnings" && warningView === "status";
+  const isWarnings = tab.id === "warnings" && (warningView === "status" || warningView === "early");
   root.hidden = !isWarnings;
   if (!isWarnings) {
     root.innerHTML = "";
@@ -472,6 +486,11 @@ function renderWarningDetails(tab, state, warningView = "status") {
   if (state.status === "error") {
     root.innerHTML = `<div class="warning-empty">取得失敗</div>`;
     activeWarningAreasByCode = new Map();
+    return;
+  }
+
+  if (warningView === "early") {
+    renderEarlyWarningDetails(root, state);
     return;
   }
 
@@ -501,11 +520,46 @@ function renderWarningDetails(tab, state, warningView = "status") {
   `).join("");
 }
 
+function renderEarlyWarningDetails(root, state) {
+  const groups = state.data?.earlyWarnings?.groups ?? [];
+  const areas = state.data?.earlyWarnings?.areas ?? [];
+  const municipalityAreas = state.data?.earlyWarnings?.municipalityAreas ?? [];
+
+  if (groups.length === 0) {
+    root.innerHTML = `<div class="warning-empty">早期注意情報は発表されていません</div>`;
+    activeWarningAreasByCode = new Map();
+    return;
+  }
+
+  activeWarningAreasByCode = new Map([
+    ...areas.map((area) => [String(area.areaCode), area]),
+    ...municipalityAreas.map((area) => [String(area.areaCode), area])
+  ]);
+
+  root.innerHTML = groups.map((group) => `
+    <div class="warning-prefecture-label">${escapeHtml(group.prefecture)}<span>${escapeHtml(group.count ?? group.areas.length)}件</span></div>
+    ${group.areas.map((area) => `
+      <article class="warning-area-row early-warning-row${String(area.areaCode) === selectedWarningAreaCode ? " selected" : ""}" data-warning-area-code="${escapeHtml(area.areaCode)}">
+        <strong>${escapeHtml(area.areaName)}</strong>
+        <div class="warning-badges">
+          ${area.probabilities.map((probability) => `
+            <span class="warning-badge early-warning-badge early-warning-badge-${escapeHtml(probability.level)}">${escapeHtml(formatEarlyProbabilityBadge(probability))}</span>
+          `).join("")}
+        </div>
+      </article>
+    `).join("")}
+  `).join("");
+}
+
 function openWarningModal(areaCode) {
   const area = activeWarningAreasByCode.get(String(areaCode));
   const modal = document.getElementById("warning-modal");
   const content = document.getElementById("warning-modal-content");
   if (!area || !modal || !content) return;
+  if (area.kind === "early") {
+    openEarlyWarningModal(area, modal, content);
+    return;
+  }
 
   const warnings = area.warnings ?? [];
   const outlookRows = area.outlook ?? [];
@@ -538,12 +592,40 @@ function openWarningModal(areaCode) {
   document.body.classList.add("modal-open");
 }
 
+function openEarlyWarningModal(area, modal, content) {
+  content.innerHTML = `
+    <header class="warning-modal-head">
+      <span>${escapeHtml(area.prefecture ?? "")}</span>
+      <h2 id="warning-modal-title">${escapeHtml(area.displayAreaName ?? area.areaName)}</h2>
+      <p>更新時刻: ${escapeHtml(formatWarningTime(area.updatedAt))}</p>
+    </header>
+    <section class="warning-modal-section">
+      <h3>早期注意情報（警報級の可能性）</h3>
+      <div class="warning-modal-warning-list">
+        <article class="warning-modal-warning">
+          <div class="warning-badges">
+            ${(area.probabilities ?? []).map((probability) => `
+              <span class="warning-badge early-warning-badge early-warning-badge-${escapeHtml(probability.level)}">${escapeHtml(formatEarlyProbabilityBadge(probability))}</span>
+            `).join("")}
+          </div>
+        </article>
+      </div>
+    </section>
+    <section class="warning-modal-section">
+      <h3>期間別の可能性</h3>
+      ${buildWarningOutlookTable(area.rows ?? [])}
+    </section>
+  `;
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
 function buildWarningOutlookTable(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return `<p class="warning-modal-empty">今後の見通しはありません。</p>`;
   }
 
-  const times = rows[0]?.slots ?? [];
+  const times = collectOutlookTableSlots(rows);
   return `
     <div class="warning-outlook-scroll">
       <table class="warning-outlook-table">
@@ -557,7 +639,7 @@ function buildWarningOutlookTable(rows) {
           ${rows.map((row) => `
             <tr>
               <th>${escapeHtml(row.type)}${row.localName ? `<span>${escapeHtml(row.localName)}</span>` : ""}</th>
-              ${row.slots.map((slot) => `
+              ${times.map((timeSlot) => findMatchingOutlookSlot(row.slots, timeSlot)).map((slot) => `
                 <td class="warning-outlook-level-${escapeHtml(slot.level ?? 0)}">${escapeHtml(formatOutlookCellLabel(slot))}</td>
               `).join("")}
             </tr>
@@ -568,9 +650,39 @@ function buildWarningOutlookTable(rows) {
   `;
 }
 
+function collectOutlookTableSlots(rows) {
+  const slotsByKey = new Map();
+  rows.forEach((row) => {
+    (row.slots ?? []).forEach((slot) => {
+      if (!slotsByKey.has(outlookSlotKey(slot))) slotsByKey.set(outlookSlotKey(slot), slot);
+    });
+  });
+  return [...slotsByKey.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+}
+
+function findMatchingOutlookSlot(slots = [], referenceSlot) {
+  return slots.find((slot) => outlookSlotKey(slot) === outlookSlotKey(referenceSlot)) ?? {
+    ...referenceSlot,
+    label: "",
+    level: 0
+  };
+}
+
+function outlookSlotKey(slot) {
+  return `${slot?.time ?? ""}|${slot?.duration ?? ""}`;
+}
+
 function formatOutlookCellLabel(slot) {
   if (slot?.label) return slot.label;
-  return slot?.level >= 2 ? "" : "-";
+  if (typeof slot?.level === "number" && slot.level >= 2) return "";
+  return "-";
+}
+
+function formatEarlyProbabilityBadge(probability) {
+  return [probability?.type, probability?.label]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function closeWarningModal() {
@@ -785,6 +897,7 @@ function formatWarningTime(value) {
 }
 
 function formatOutlookTime(slot) {
+  if (slot?.displayLabel) return slot.displayLabel;
   const start = new Date(slot?.time ?? "");
   if (Number.isNaN(start.getTime())) return "--";
   const end = new Date(start.getTime() + parseDurationHours(slot?.duration) * 60 * 60 * 1000);
