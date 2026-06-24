@@ -71,6 +71,10 @@ const WARNING_LEVEL_NUMBERS = {
 
 const WARNING_LEVEL_TARGETS = ["河川氾濫", "洪水", "大雨", "土砂災害", "高潮"];
 
+export function getPrefectureNameByCode(areaCode) {
+  return PREFECTURE_NAMES[String(areaCode ?? "").slice(0, 2)] ?? "その他";
+}
+
 export async function fetchWarningMap() {
   const [warningReports, warningTimelineReports, municipalityGeoJson] = await Promise.all([
     fetchWarningReports(),
@@ -140,7 +144,7 @@ function buildWarningAreaMap(warningReports, municipalityIndex, outlookByAreaCod
           areaCode: resolvedCode,
           areaName: resolvedArea.name ?? area.name ?? `エリア ${resolvedCode}`,
           prefectureCode: resolvedCode.slice(0, 2),
-          prefecture: PREFECTURE_NAMES[resolvedCode.slice(0, 2)] ?? "その他",
+          prefecture: getPrefectureNameByCode(resolvedCode),
           updatedAt: report.reportDatetime,
           warnings: [],
           outlook: outlookByAreaCode.get(resolvedCode) ?? []

@@ -10,6 +10,7 @@ import { fetchAmedasLatestTime } from "./jma/amedas.js";
 import { fetchWarningMap } from "./jma/warnings.js";
 import { fetchTyphoonList } from "./jma/typhoon.js";
 import { fetchKikikuruTiles } from "./jma/kikikuru.js";
+import { resolveCurrentLocationInfo } from "./location/currentLocation.js";
 
 const loaders = {
   radar: fetchRadarTimes,
@@ -49,6 +50,7 @@ export function createWeatherApp() {
   let autoRefreshInFlight = false;
   let lastAutoRefreshStartedAt = 0;
   let tabControls = null;
+  let currentLocationInfo = { status: "idle" };
 
   async function selectTab(tabId) {
     const tab = TABS.find((item) => item.id === tabId) ?? TABS[0];
@@ -60,7 +62,8 @@ export function createWeatherApp() {
       amedasMetric: activeAmedasMetric,
       warningView: activeWarningView,
       activeKikikuruLayer,
-      radarPlaying: Boolean(radarPlayTimer)
+      radarPlaying: Boolean(radarPlayTimer),
+      currentLocation: currentLocationInfo
     });
     weatherMap?.setMode(tab.id);
 
@@ -79,7 +82,8 @@ export function createWeatherApp() {
         amedasMetric: activeAmedasMetric,
         warningView: activeWarningView,
         activeKikikuruLayer,
-        radarPlaying: Boolean(radarPlayTimer)
+        radarPlaying: Boolean(radarPlayTimer),
+        currentLocation: currentLocationInfo
       });
     }
   }
@@ -121,7 +125,8 @@ export function createWeatherApp() {
       amedasMetric: activeAmedasMetric,
       warningView: activeWarningView,
       activeKikikuruLayer,
-      radarPlaying: Boolean(radarPlayTimer)
+      radarPlaying: Boolean(radarPlayTimer),
+      currentLocation: currentLocationInfo
     });
     weatherMap?.renderData(tab.id, displayData);
   }
@@ -256,6 +261,76 @@ export function createWeatherApp() {
     }
   }
 
+  async function locateCurrentPosition() {
+    if (!navigator.geolocation) {
+      currentLocationInfo = {
+        status: "error",
+        message: "このブラウザでは位置情報を利用できません。"
+      };
+      refreshActivePanel();
+      return;
+    }
+
+    setLocateButtonBusy(true);
+    currentLocationInfo = {
+      status: "loading",
+      message: "現在地を取得中です..."
+    };
+    refreshActivePanel();
+
+    try {
+      const position = await requestCurrentPosition();
+      const coordinates = [position.coords.longitude, position.coords.latitude];
+      weatherMap?.showCurrentLocation(coordinates, position.coords.accuracy);
+      weatherMap?.flyToLocation(coordinates);
+
+      const warningData = latestDataByTab.warnings ?? await fetchWarningTabData();
+      latestDataByTab.warnings = warningData;
+      currentLocationInfo = await resolveCurrentLocationInfo(coordinates, warningData);
+
+      if (activeTab !== "warnings") {
+        activeTab = "warnings";
+        tabControls?.setActiveButton(activeTab);
+        stopRadarPlayback();
+        weatherMap?.setMode(activeTab);
+      }
+
+      const tab = TABS.find((item) => item.id === "warnings");
+      updateCurrentView(tab, warningData);
+    } catch (error) {
+      currentLocationInfo = buildCurrentLocationError(error);
+      refreshActivePanel();
+    } finally {
+      setLocateButtonBusy(false);
+    }
+  }
+
+  function refreshActivePanel() {
+    const tab = TABS.find((item) => item.id === activeTab) ?? TABS[0];
+    const data = latestDataByTab[tab.id];
+    if (data) {
+      updateCurrentView(tab, data);
+      return;
+    }
+
+    updateLeftPanel(tab, {
+      status: "loading",
+      amedasMetric: activeAmedasMetric,
+      warningView: activeWarningView,
+      activeKikikuruLayer,
+      radarPlaying: Boolean(radarPlayTimer),
+      currentLocation: currentLocationInfo
+    });
+  }
+
+  function setLocateButtonBusy(isBusy) {
+    const button = document.getElementById("locate-button");
+    if (!button) return;
+    button.classList.toggle("loading", isBusy);
+    button.disabled = isBusy;
+    button.setAttribute("aria-busy", isBusy ? "true" : "false");
+  }
+
   function startAutoRefresh() {
     if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
     autoRefreshTimer = window.setInterval(() => {
@@ -286,12 +361,43 @@ export function createWeatherApp() {
     });
     setupLegendToggle();
     setupPanelToggle({ onLayoutChange: () => weatherMap?.resize() });
+    document.getElementById("locate-button")?.addEventListener("click", locateCurrentPosition);
     startClock("clock");
     startAutoRefresh();
     selectTab(activeTab);
   }
 
   return { start, selectTab };
+}
+
+function requestCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: false,
+      timeout: 12000,
+      maximumAge: 60 * 1000
+    });
+  });
+}
+
+function buildCurrentLocationError(error) {
+  const code = Number(error?.code);
+  if (code === 1) {
+    return {
+      status: "error",
+      message: "位置情報の利用が許可されていません。"
+    };
+  }
+  if (code === 3) {
+    return {
+      status: "error",
+      message: "位置情報の取得がタイムアウトしました。"
+    };
+  }
+  return {
+    status: "error",
+    message: "現在地を取得できませんでした。"
+  };
 }
 
 function getLaunchOptions() {

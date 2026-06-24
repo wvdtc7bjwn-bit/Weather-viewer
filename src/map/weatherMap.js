@@ -58,6 +58,7 @@ const RADAR_ZOOM_LEVELS = [
 ];
 const MUNICIPALITY_SOURCE_ID = "jma-weather-warning-municipalities";
 const WARNING_SOURCE_ID = "jma-active-warning-municipalities";
+const CURRENT_LOCATION_SOURCE_ID = "current-location";
 const MUNICIPALITY_FILL_LAYER_ID = "jma-municipality-fill";
 const WARNING_OVERLAY_LAYER_ID = "jma-warning-overlay";
 const WARNING_HATCH_LAYER_ID = "jma-warning-emergency-hatch";
@@ -141,12 +142,44 @@ export function createWeatherMap(elementId) {
     updateWarningMunicipalityPaint(map, mode, data);
   }
 
+  function showCurrentLocation(coordinates, accuracy = null) {
+    const source = map?.getSource(CURRENT_LOCATION_SOURCE_ID);
+    if (!source?.setData || !Array.isArray(coordinates)) return;
+    source.setData({
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates
+        },
+        properties: {
+          accuracy: Number.isFinite(accuracy) ? accuracy : null
+        }
+      }]
+    });
+  }
+
+  function flyToLocation(coordinates) {
+    if (!map || !Array.isArray(coordinates)) return;
+    map.flyTo({
+      center: coordinates,
+      zoom: Math.max(map.getZoom(), 8.2),
+      duration: 850,
+      essential: true
+    });
+  }
+
   function setupSampleLayers() {
     map.addSource(SAMPLE_SOURCE_ID, {
       type: "geojson",
       data: createSampleFeatureCollection(activeMode)
     });
     map.addSource(TYPHOON_SOURCE_ID, {
+      type: "geojson",
+      data: createEmptyFeatureCollection()
+    });
+    map.addSource(CURRENT_LOCATION_SOURCE_ID, {
       type: "geojson",
       data: createEmptyFeatureCollection()
     });
@@ -281,6 +314,30 @@ export function createWeatherMap(elementId) {
         "text-halo-color": "rgba(5, 9, 20, 0.86)",
         "text-halo-width": 2,
         "text-halo-blur": 0.4
+      }
+    });
+
+    map.addLayer({
+      id: "current-location-halo",
+      type: "circle",
+      source: CURRENT_LOCATION_SOURCE_ID,
+      paint: {
+        "circle-radius": 17,
+        "circle-color": "rgba(86, 183, 242, 0.18)",
+        "circle-stroke-color": "rgba(216, 230, 247, 0.5)",
+        "circle-stroke-width": 1
+      }
+    });
+
+    map.addLayer({
+      id: "current-location-dot",
+      type: "circle",
+      source: CURRENT_LOCATION_SOURCE_ID,
+      paint: {
+        "circle-radius": 6,
+        "circle-color": "#56b7f2",
+        "circle-stroke-color": "#f8fbff",
+        "circle-stroke-width": 3
       }
     });
 
@@ -519,7 +576,7 @@ export function createWeatherMap(elementId) {
     map?.resize();
   }
 
-  return { initialize, setMode, renderData, resize };
+  return { initialize, setMode, renderData, resize, showCurrentLocation, flyToLocation };
 }
 
 function createBaseStyle() {

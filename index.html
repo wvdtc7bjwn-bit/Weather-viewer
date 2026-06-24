@@ -12,7 +12,7 @@
   <link rel="manifest" href="%BASE_URL%site.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -29,6 +29,7 @@
         <div id="mode-label" class="mode-label">雨雲レーダー</div>
         <h1 id="panel-title" hidden></h1>
         <p id="panel-time">更新時刻を取得中...</p>
+        <div id="current-location-card" class="current-location-card" hidden></div>
         <div id="warning-sub-tabs" class="warning-sub-tabs" hidden>
           <button class="warning-sub-button active" data-warning-view="status">発表状況</button>
           <button class="warning-sub-button" data-warning-view="kikikuru">キキクル</button>
@@ -64,6 +65,7 @@
     <main id="map-area">
       <div id="map"></div>
       <div id="clock"></div>
+      <button id="locate-button" class="map-locate-button" type="button" aria-label="現在地の気象情報を表示" title="現在地"></button>
       <div id="kikikuru-layer-tabs" class="kikikuru-layer-tabs map-kikikuru-tabs" hidden></div>
       <section id="map-legend" class="map-legend" aria-label="凡例">
         <button id="legend-toggle" class="legend-toggle" type="button" aria-expanded="true" aria-controls="legend-list">

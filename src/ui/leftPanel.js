@@ -44,6 +44,7 @@ export function updateLeftPanel(tab, state = {}) {
   setText("panel-description", buildDescription(tab, state));
   setText("panel-time", buildTimeText(state));
   setPanelTimeVisible(tab.id !== "radar" && tab.id !== "typhoon");
+  renderCurrentLocationCard(tab, state.currentLocation);
   renderWarningSubTabs(tab, warningView);
   renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
@@ -324,6 +325,13 @@ export function setupWarningAreaSelection() {
   const root = document.getElementById("warning-detail-list");
   if (!root) return;
 
+  document.getElementById("sidebar")?.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest("[data-current-location-area-code]");
+    if (!button?.dataset.currentLocationAreaCode) return;
+    selectWarningArea(button.dataset.currentLocationAreaCode, { scroll: true, openModal: true });
+  });
+
   root.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
     const row = event.target.closest(".warning-area-row");
@@ -403,6 +411,58 @@ function buildSliderBackground(activeIndex, observedIndex, length) {
     #4cb7f2 0%, #4cb7f2 ${observed},
     rgba(72,196,107,0.76) ${observed}, rgba(72,196,107,0.76) ${active},
     rgba(255,255,255,0.16) ${active}, rgba(255,255,255,0.16) 100%)`;
+}
+
+function renderCurrentLocationCard(tab, info) {
+  const root = document.getElementById("current-location-card");
+  if (!root) return;
+
+  if (tab.id !== "warnings" || !info || info.status === "idle") {
+    root.hidden = true;
+    root.innerHTML = "";
+    return;
+  }
+
+  root.hidden = false;
+  root.className = `current-location-card current-location-card-${escapeHtml(info.status)}`;
+
+  if (info.status === "loading") {
+    root.innerHTML = `
+      <span>現在地</span>
+      <strong>${escapeHtml(info.message ?? "現在地を取得中です...")}</strong>
+    `;
+    return;
+  }
+
+  if (info.status === "error") {
+    root.innerHTML = `
+      <span>現在地</span>
+      <strong>${escapeHtml(info.message ?? "現在地を取得できませんでした。")}</strong>
+    `;
+    return;
+  }
+
+  const warnings = info.warnings ?? [];
+  const detailButton = info.areaCode && warnings.length > 0
+    ? `<button type="button" data-current-location-area-code="${escapeHtml(info.areaCode)}">詳細</button>`
+    : "";
+
+  root.innerHTML = `
+    <div class="current-location-head">
+      <span>現在地</span>
+      ${detailButton}
+    </div>
+    <strong>${escapeHtml([info.prefecture, info.areaName].filter(Boolean).join(" ")) || "現在地"}</strong>
+    <p>${escapeHtml(info.message ?? "")}</p>
+    ${info.updatedAt ? `<small>更新時刻: ${escapeHtml(formatWarningTime(info.updatedAt))}</small>` : ""}
+    ${warnings.length > 0 ? `
+      <div class="current-location-warnings">
+        ${warnings.map((warning) => `
+          <span class="warning-badge warning-badge-${escapeHtml(warning.level)}">${escapeHtml(warning.label)}</span>
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
 }
 
 function renderWarningDetails(tab, state, warningView = "status") {
