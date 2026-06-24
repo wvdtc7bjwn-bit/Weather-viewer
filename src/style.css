@@ -265,7 +265,6 @@ h2 {
 }
 
 .amedas-sub-tabs,
-.warning-sub-tabs,
 .kikikuru-layer-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -274,13 +273,11 @@ h2 {
 }
 
 .amedas-sub-tabs[hidden],
-.warning-sub-tabs[hidden],
 .kikikuru-layer-tabs[hidden] {
   display: none;
 }
 
 .amedas-sub-button,
-.warning-sub-button,
 .kikikuru-layer-button {
   min-width: 0;
   min-height: 38px;
@@ -295,7 +292,6 @@ h2 {
 }
 
 .amedas-sub-button.active,
-.warning-sub-button.active,
 .kikikuru-layer-button.active {
   border-color: rgba(135, 237, 167, 0.38);
   background: rgba(72, 196, 107, 0.16);
@@ -312,7 +308,7 @@ h2 {
   position: absolute;
   left: 22px;
   bottom: 24px;
-  z-index: 20;
+  z-index: 460;
   width: auto;
   min-width: 0;
   gap: 6px;
@@ -326,7 +322,7 @@ h2 {
 }
 
 .map-kikikuru-tabs .kikikuru-layer-button {
-  min-width: 92px;
+  min-width: 86px;
   min-height: 34px;
   padding: 7px 12px;
   border-radius: 10px;
@@ -1529,6 +1525,7 @@ h2 {
 
   .map-locate-button {
     left: 17px;
+    bottom: calc(var(--mobile-sidebar-visible-height, 34dvh) + 70px);
   }
 
   .tab-button {

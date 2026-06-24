@@ -1,7 +1,7 @@
 import { AMEDAS_METRICS, AUTO_REFRESH_INTERVAL_MS, AUTO_REFRESH_RESUME_THROTTLE_MS, KIKIKURU_LAYER_OPTIONS, TABS } from "./config.js";
 import { createWeatherMap } from "./map/weatherMap.js";
 import { setupTabs } from "./ui/tabs.js";
-import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupTyphoonSelector, setupWarningAreaSelection, setupWarningSubTabs, updateLeftPanel } from "./ui/leftPanel.js";
+import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupTyphoonSelector, setupWarningAreaSelection, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
 import { startClock } from "./ui/time.js";
@@ -95,16 +95,21 @@ export function createWeatherApp() {
     updateCurrentView(tab, latestDataByTab.amedas);
   }
 
-  function selectWarningView(viewId) {
-    activeWarningView = viewId === "kikikuru" ? "kikikuru" : "status";
-    if (activeTab !== "warnings") return;
-    const tab = TABS.find((item) => item.id === "warnings");
-    updateCurrentView(tab, latestDataByTab.warnings);
-  }
-
   function selectKikikuruLayer(layerId) {
-    if (!KIKIKURU_LAYER_OPTIONS.some((element) => element.id === layerId)) return;
-    activeKikikuruLayer = layerId;
+    if (layerId === "status") {
+      activeWarningView = "status";
+      if (activeTab !== "warnings") return;
+      const tab = TABS.find((item) => item.id === "warnings");
+      updateCurrentView(tab, latestDataByTab.warnings);
+      return;
+    }
+
+    if (layerId !== "kikikuru" && !KIKIKURU_LAYER_OPTIONS.some((element) => element.id === layerId)) return;
+    const previousWarningView = activeWarningView;
+    activeWarningView = "kikikuru";
+    activeKikikuruLayer = layerId === "kikikuru"
+      ? getNextKikikuruLayer(previousWarningView, activeKikikuruLayer)
+      : layerId;
     if (activeTab !== "warnings") return;
     const tab = TABS.find((item) => item.id === "warnings");
     updateCurrentView(tab, latestDataByTab.warnings);
@@ -349,7 +354,6 @@ export function createWeatherApp() {
     tabControls = setupTabs({ onChange: selectTab });
     setupAmedasSubTabs({ onChange: selectAmedasMetric });
     setupAmedasRankingToggle({ onChange: refreshAmedasPanel });
-    setupWarningSubTabs({ onChange: selectWarningView });
     setupKikikuruLayerToggles({ onChange: selectKikikuruLayer });
     setupWarningAreaSelection();
     setupTyphoonSelector({ onChange: selectTyphoon });
@@ -368,6 +372,11 @@ export function createWeatherApp() {
   }
 
   return { start, selectTab };
+}
+
+function getNextKikikuruLayer(currentView, currentLayer) {
+  if (currentView !== "kikikuru") return currentLayer === "inund" ? "inund" : "land";
+  return currentLayer === "land" ? "inund" : "land";
 }
 
 function requestCurrentPosition() {

@@ -45,7 +45,6 @@ export function updateLeftPanel(tab, state = {}) {
   setText("panel-time", buildTimeText(state));
   setPanelTimeVisible(tab.id !== "radar" && tab.id !== "typhoon");
   renderCurrentLocationCard(tab, state.currentLocation);
-  renderWarningSubTabs(tab, warningView);
   renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
   renderRadarControls(tab, state);
@@ -79,17 +78,6 @@ export function setupAmedasRankingToggle({ onChange }) {
     if (order !== "top" && order !== "bottom") return;
     amedasRankingOrder = order;
     onChange?.();
-  });
-}
-
-export function setupWarningSubTabs({ onChange }) {
-  const buttons = [...document.querySelectorAll(".warning-sub-button")];
-  buttons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const viewId = button.dataset.warningView;
-      buttons.forEach((item) => item.classList.toggle("active", item === button));
-      onChange?.(viewId);
-    });
   });
 }
 
@@ -140,7 +128,8 @@ function buildDescription(tab, state) {
     if (state.status === "error") return "警報・注意報データを取得できませんでした。";
     if (state.data?.activeWarningView === "kikikuru") {
       if (state.data?.kikikuru?.unavailable) return "キキクルのタイルを取得できませんでした。";
-      return "土砂・浸水キキクルを地図上に重ねて表示しています。";
+      const layerLabel = KIKIKURU_LAYER_OPTIONS.find((element) => element.id === state.data?.activeKikikuruLayer)?.label ?? "キキクル";
+      return `${layerLabel}を地図上に重ねて表示しています。`;
     }
     return "都道府県ごとに、市区町村の注意報・警報・危険警報・特別警報を表示しています。";
   }
@@ -210,36 +199,32 @@ function buildLegendItems(tabId, amedasMetricId, warningView = "status") {
   return legendsByTab[tabId] ?? [];
 }
 
-function renderWarningSubTabs(tab, activeView) {
-  const root = document.getElementById("warning-sub-tabs");
-  if (!root) return;
-
-  const isWarnings = tab.id === "warnings";
-  root.hidden = !isWarnings;
-  if (!isWarnings) return;
-
-  [...root.querySelectorAll(".warning-sub-button")].forEach((button) => {
-    button.classList.toggle("active", button.dataset.warningView === activeView);
-  });
-}
-
 function renderKikikuruLayerTabs(tab, warningView, activeLayer) {
   const root = document.getElementById("kikikuru-layer-tabs");
   if (!root) return;
 
-  const isKikikuru = tab.id === "warnings" && warningView === "kikikuru";
-  root.hidden = !isKikikuru;
-  if (!isKikikuru) {
+  const isWarnings = tab.id === "warnings";
+  root.hidden = !isWarnings;
+  if (!isWarnings) {
     root.innerHTML = "";
     return;
   }
 
-  root.innerHTML = KIKIKURU_LAYER_OPTIONS.map((element) => `
+  const activeKikikuruOption = KIKIKURU_LAYER_OPTIONS.find((element) => element.id === activeLayer)
+    ?? KIKIKURU_LAYER_OPTIONS[0]
+    ?? { id: "land", label: "土砂キキクル" };
+  const activeId = warningView === "kikikuru" ? "kikikuru" : "status";
+  const options = [
+    { id: "status", label: "発表状況" },
+    { id: "kikikuru", label: activeKikikuruOption.label }
+  ];
+
+  root.innerHTML = options.map((element) => `
     <button
       type="button"
-      class="kikikuru-layer-button${activeLayer === element.id ? " active" : ""}"
+      class="kikikuru-layer-button${activeId === element.id ? " active" : ""}"
       data-kikikuru-layer="${escapeHtml(element.id)}"
-      aria-pressed="${activeLayer === element.id ? "true" : "false"}"
+      aria-pressed="${activeId === element.id ? "true" : "false"}"
     >${escapeHtml(element.label)}</button>
   `).join("");
 }
