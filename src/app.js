@@ -4,6 +4,7 @@ import { setupTabs } from "./ui/tabs.js";
 import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupTyphoonSelector, setupWarningAreaSelection, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
+import { setupSettingsModal } from "./ui/settingsModal.js";
 import { startClock } from "./ui/time.js";
 import { fetchRadarTimes } from "./jma/radar.js";
 import { fetchAmedasLatestTime } from "./jma/amedas.js";
@@ -373,6 +374,7 @@ export function createWeatherApp() {
     });
     setupLegendToggle();
     setupPanelToggle({ onLayoutChange: () => weatherMap?.resize() });
+    setupSettingsModal();
     document.getElementById("locate-button")?.addEventListener("click", locateCurrentPosition);
     startClock("clock");
     startAutoRefresh();

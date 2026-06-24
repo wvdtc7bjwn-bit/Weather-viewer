@@ -56,6 +56,11 @@
         <div id="amedas-ranking" class="amedas-ranking" hidden></div>
       </section>
 
+      <footer class="sidebar-footer">
+        <button id="settings-button" class="settings-button" type="button" aria-haspopup="dialog" aria-controls="settings-modal" aria-expanded="false">
+          <span>設定</span>
+        </button>
+      </footer>
     </aside>
 
     <main id="map-area">
@@ -77,6 +82,38 @@
       <section class="warning-modal-panel" role="dialog" aria-modal="true" aria-labelledby="warning-modal-title">
         <button class="warning-modal-close" type="button" aria-label="閉じる" data-warning-modal-close>×</button>
         <div id="warning-modal-content"></div>
+      </section>
+    </div>
+
+    <div id="settings-modal" class="warning-modal settings-modal" hidden>
+      <div class="warning-modal-backdrop settings-modal-overlay" data-settings-modal-close></div>
+      <section class="warning-modal-panel settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <header class="settings-modal-header">
+          <div>
+            <span>Weather Viewer</span>
+            <h2 id="settings-modal-title">設定</h2>
+          </div>
+          <button class="warning-modal-close settings-modal-close" type="button" aria-label="閉じる" data-settings-modal-close>×</button>
+        </header>
+        <div class="settings-modal-body">
+          <section class="settings-group">
+            <div class="settings-group-title">利用規約</div>
+            <div class="settings-policy-copy">
+              <p>本アプリは、気象庁などが公開する防災・気象情報を閲覧しやすく表示するための補助ツールです。</p>
+              <p>表示内容は速報性や完全性を保証するものではありません。避難判断や安全確保が必要な場合は、気象庁、自治体、報道機関などの公式情報を必ず確認してください。</p>
+              <p>本アプリの利用によって生じたいかなる損害についても、開発者は責任を負いません。</p>
+            </div>
+          </section>
+          <section class="settings-group">
+            <div class="settings-group-title">プライバシーポリシー</div>
+            <div class="settings-policy-copy">
+              <p>本アプリは、サーバー側で個人を識別する情報を保存しません。</p>
+              <p>現在地機能を利用する場合、位置情報はブラウザ上で気象情報の照合と地図表示にのみ使用します。位置情報は外部サーバーへ保存しません。</p>
+              <p>気象データや地図表示の取得時には、各提供元のサーバーへ通信が発生します。</p>
+            </div>
+          </section>
+          <p class="settings-source-note">情報出典: 気象庁・Natural Earth・MapLibre GL JS</p>
+        </div>
       </section>
     </div>
   </div>
