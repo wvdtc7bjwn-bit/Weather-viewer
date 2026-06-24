@@ -537,13 +537,20 @@ function buildEarlyWarningSlots(timeDefines = []) {
     const next = dates[index + 1];
     const durationHours = Number.isFinite(next?.getTime?.())
       ? Math.max(1, Math.round((next.getTime() - start.getTime()) / (60 * 60 * 1000)))
-      : 24;
+      : fallbackEarlySlotDuration(start);
     return {
       time: value,
       duration: `PT${durationHours}H`,
-      displayLabel: formatEarlySlotLabel(start, durationHours)
+      displayLabel: formatEarlySlotLabel(start, durationHours),
+      isDaily: isEarlyDailySlot(start, durationHours)
     };
   });
+}
+
+function fallbackEarlySlotDuration(start) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return 24;
+  const startHour = Number(getJstDatePart(start, "hour"));
+  return startHour > 0 ? Math.max(1, 24 - startHour) : 24;
 }
 
 function formatEarlySlotLabel(start, durationHours) {
@@ -555,6 +562,11 @@ function formatEarlySlotLabel(start, durationHours) {
   const endHourValue = startHour + durationHours;
   const endHour = endHourValue >= 24 ? 24 : endHourValue;
   return `${Number(day)}日 ${String(startHour).padStart(2, "0")}-${String(endHour).padStart(2, "0")}`;
+}
+
+function isEarlyDailySlot(start, durationHours) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return false;
+  return Number(getJstDatePart(start, "hour")) === 0 && durationHours >= 23;
 }
 
 function getJstDatePart(date, type) {
@@ -616,22 +628,82 @@ function mergeEarlyWarningRows(currentRows, nextRows) {
     row.slots.forEach((slot) => {
       const key = earlySlotKey(slot);
       const previous = slotsByKey.get(key);
-      if (
-        !previous ||
-        earlySeverityValue(slot.level) > earlySeverityValue(previous.level) ||
-        (previous.available === false && slot.available !== false)
-      ) {
-        slotsByKey.set(key, slot);
-      }
+      slotsByKey.set(key, chooseEarlyWarningSlot(previous, slot));
     });
     current.slots = [...slotsByKey.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   });
 
-  return [...rowsByType.values()].sort((a, b) => earlyWarningTypeOrder(a.type) - earlyWarningTypeOrder(b.type));
+  return normalizeEarlyWarningRows([...rowsByType.values()])
+    .sort((a, b) => earlyWarningTypeOrder(a.type) - earlyWarningTypeOrder(b.type));
 }
 
 function earlySlotKey(slot) {
   return `${slot.time}|${slot.duration}`;
+}
+
+function chooseEarlyWarningSlot(previous, next) {
+  if (!previous) return next;
+  if (previous.available === false && next.available !== false) return next;
+  if (earlySeverityValue(next.level) > earlySeverityValue(previous.level)) return next;
+  return previous;
+}
+
+function normalizeEarlyWarningRows(rows) {
+  const normalizedRows = rows.map((row) => ({ ...row, slots: [...(row.slots ?? [])] }));
+  const coveredPartialDays = new Set();
+
+  normalizedRows.forEach((row) => {
+    row.slots.forEach((slot) => {
+      if (!slot.isDaily) coveredPartialDays.add(earlySlotDateKey(slot));
+    });
+  });
+
+  normalizedRows.forEach((row) => {
+    row.slots = row.slots.filter((slot) => !slot.isDaily || !coveredPartialDays.has(earlySlotDateKey(slot)));
+  });
+
+  syncDailyRainAndLandslideRows(normalizedRows);
+
+  return normalizedRows.filter(hasApplicableEarlyWarningSlots);
+}
+
+function syncDailyRainAndLandslideRows(rows) {
+  const rainRow = rows.find((row) => row.type === "大雨");
+  const landslideRow = rows.find((row) => row.type === "土砂災害");
+  if (!rainRow || !landslideRow) return;
+  if (!hasApplicableEarlyWarningSlots(rainRow) || !hasApplicableEarlyWarningSlots(landslideRow)) return;
+
+  const dailySlotsByKey = new Map();
+  [rainRow, landslideRow].forEach((row) => {
+    row.slots.forEach((slot) => {
+      if (!slot.isDaily || slot.available === false) return;
+      const key = earlySlotKey(slot);
+      dailySlotsByKey.set(key, chooseEarlyWarningSlot(dailySlotsByKey.get(key), slot));
+    });
+  });
+
+  if (dailySlotsByKey.size === 0) return;
+
+  [rainRow, landslideRow].forEach((row) => {
+    const slotsByKey = new Map(row.slots.map((slot) => [earlySlotKey(slot), slot]));
+    dailySlotsByKey.forEach((slot, key) => {
+      slotsByKey.set(key, chooseEarlyWarningSlot(slotsByKey.get(key), { ...slot }));
+    });
+    row.slots = [...slotsByKey.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  });
+}
+
+function earlySlotDateKey(slot) {
+  const date = new Date(slot?.time ?? "");
+  if (Number.isNaN(date.getTime())) return String(slot?.time ?? "");
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Tokyo"
+  }).formatToParts(date);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
 }
 
 function buildEarlyWarningSummary(rows) {
