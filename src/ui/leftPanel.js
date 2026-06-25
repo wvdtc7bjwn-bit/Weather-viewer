@@ -638,7 +638,7 @@ function buildWarningOutlookTable(rows) {
         <tbody>
           ${rows.map((row) => `
             <tr>
-              <th>${escapeHtml(row.type)}${row.localName ? `<span>${escapeHtml(row.localName)}</span>` : ""}</th>
+              <th>${escapeHtml(formatOutlookTypeLabel(row.type))}${row.localName ? `<span>${escapeHtml(row.localName)}</span>` : ""}</th>
               ${times.map((timeSlot) => findMatchingOutlookSlot(row.slots, timeSlot)).map((slot) => `
                 <td class="warning-outlook-level-${escapeHtml(slot.level ?? 0)}">${escapeHtml(formatOutlookCellLabel(slot))}</td>
               `).join("")}
@@ -648,6 +648,10 @@ function buildWarningOutlookTable(rows) {
       </table>
     </div>
   `;
+}
+
+function formatOutlookTypeLabel(type) {
+  return type === "暴風" ? "強風" : type;
 }
 
 function collectOutlookTableSlots(rows) {
