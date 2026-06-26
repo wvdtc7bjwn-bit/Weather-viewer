@@ -1,4 +1,4 @@
-import { JMA_ENDPOINTS, JMA_WARNING_OFFICE_CODES } from "../config.js";
+import { JMA_ENDPOINTS, JMA_WARNING_OFFICE_CODES, STATIC_DATA_CACHE_TTL_MS } from "../config.js";
 import { fetchJson, parseJmaTime } from "./jmaClient.js";
 
 const PREFECTURE_NAMES = {
@@ -81,23 +81,32 @@ export function getPrefectureNameByCode(areaCode) {
   return PREFECTURE_NAMES[String(areaCode ?? "").slice(0, 2)] ?? "その他";
 }
 
-export async function fetchWarningMap() {
-  const [warningReports, warningTimelineReports, municipalityGeoJson, areaConst, earlyWarningReports, noWaveTideConst] = await Promise.all([
+export async function fetchWarningMap(options = {}) {
+  const includeDetails = Boolean(options.includeDetails);
+  const [warningReports, municipalityGeoJson] = await Promise.all([
     fetchWarningReports(),
-    fetchWarningTimelineReports(),
-    fetchJson(JMA_ENDPOINTS.warningMunicipalities),
-    fetchJson(JMA_ENDPOINTS.areaConst),
-    fetchEarlyWarningReports(),
-    fetchNoWaveTideConst()
+    fetchJson(JMA_ENDPOINTS.warningMunicipalities, { ttlMs: STATIC_DATA_CACHE_TTL_MS, cache: "force-cache" })
   ]);
   const municipalityIndex = buildMunicipalityIndex(municipalityGeoJson);
-  const areaHierarchy = buildAreaHierarchy(areaConst, municipalityIndex);
-  const noWaveTideIndex = buildNoWaveTideIndex(noWaveTideConst);
-  const outlookByAreaCode = buildWarningOutlookMap(warningTimelineReports, municipalityIndex);
+  let outlookByAreaCode = new Map();
+  let earlyWarnings = buildEmptyEarlyWarningData();
+
+  if (includeDetails) {
+    const [warningTimelineReports, areaConst, earlyWarningReports, noWaveTideConst] = await Promise.all([
+      fetchWarningTimelineReports(),
+      fetchJson(JMA_ENDPOINTS.areaConst, { ttlMs: STATIC_DATA_CACHE_TTL_MS, cache: "force-cache" }),
+      fetchEarlyWarningReports(),
+      fetchNoWaveTideConst()
+    ]);
+    const areaHierarchy = buildAreaHierarchy(areaConst, municipalityIndex);
+    const noWaveTideIndex = buildNoWaveTideIndex(noWaveTideConst);
+    outlookByAreaCode = buildWarningOutlookMap(warningTimelineReports, municipalityIndex);
+    earlyWarnings = buildEarlyWarningData(earlyWarningReports, municipalityIndex, areaHierarchy, noWaveTideIndex);
+  }
+
   const areaMap = buildWarningAreaMap(warningReports, municipalityIndex, outlookByAreaCode);
   const activeAreas = [...areaMap.values()];
   const groups = buildWarningGroups(activeAreas);
-  const earlyWarnings = buildEarlyWarningData(earlyWarningReports, municipalityIndex, areaHierarchy, noWaveTideIndex);
   const latestReportTime = getLatestReportTime(warningReports);
 
   return {
@@ -109,8 +118,13 @@ export async function fetchWarningMap() {
     earlyMunicipalityAreas: earlyWarnings.municipalityAreas,
     summary: `発表中 ${activeAreas.length} 市区町村`,
     latestTime: parseJmaTime(latestReportTime) ?? latestReportTime,
-    updatedAt: parseJmaTime(latestReportTime) ?? "取得済み"
+    updatedAt: parseJmaTime(latestReportTime) ?? "取得済み",
+    detailsLoaded: includeDetails
   };
+}
+
+export async function fetchWarningDetails() {
+  return fetchWarningMap({ includeDetails: true });
 }
 
 async function fetchWarningReports() {
@@ -154,11 +168,22 @@ async function fetchEarlyWarningReports() {
 
 async function fetchNoWaveTideConst() {
   try {
-    return await fetchJson(JMA_ENDPOINTS.noWaveTide);
+    return await fetchJson(JMA_ENDPOINTS.noWaveTide, { ttlMs: STATIC_DATA_CACHE_TTL_MS, cache: "force-cache" });
   } catch (error) {
     console.warn("[Weather Viewer] no-wave/tide JSON unavailable", error);
     return {};
   }
+}
+
+function buildEmptyEarlyWarningData() {
+  return {
+    raw: [],
+    groups: [],
+    areas: [],
+    municipalityAreas: [],
+    latestTime: "",
+    updatedAt: "未取得"
+  };
 }
 
 function buildWarningAreaMap(warningReports, municipalityIndex, outlookByAreaCode = new Map()) {

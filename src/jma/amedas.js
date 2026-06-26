@@ -1,4 +1,4 @@
-import { JMA_ENDPOINTS } from "../config.js";
+import { JMA_ENDPOINTS, STATIC_DATA_CACHE_TTL_MS } from "../config.js";
 import { fetchJson, fetchText, parseJmaTime } from "./jmaClient.js";
 
 export async function fetchAmedasLatestTime() {
@@ -7,7 +7,7 @@ export async function fetchAmedasLatestTime() {
   const mapTime = formatAmedasMapTime(latestTime);
   const [observations, stations] = await Promise.all([
     fetchJson(`${JMA_ENDPOINTS.amedasMapBase}/${mapTime}.json`),
-    fetchJson(JMA_ENDPOINTS.amedasStationTable)
+    fetchJson(JMA_ENDPOINTS.amedasStationTable, { ttlMs: STATIC_DATA_CACHE_TTL_MS, cache: "force-cache" })
   ]);
 
   return {

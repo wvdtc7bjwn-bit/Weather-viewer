@@ -1,31 +1,60 @@
+const DEFAULT_REQUEST_TTL_MS = 60 * 1000;
+const requestCache = new Map();
+const inFlightRequests = new Map();
+
 export async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
-    cache: options.cache ?? "no-store",
-    headers: {
-      "Accept": "application/json,text/plain,*/*"
-    }
+  return fetchCached(url, {
+    ...options,
+    accept: "application/json,text/plain,*/*",
+    parse: (response) => response.json()
   });
-
-  if (!response.ok) {
-    throw new Error(`JMA request failed: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 export async function fetchText(url, options = {}) {
-  const response = await fetch(url, {
-    cache: options.cache ?? "no-store",
-    headers: {
-      "Accept": "text/plain,*/*"
-    }
+  return fetchCached(url, {
+    ...options,
+    accept: "text/plain,*/*",
+    parse: (response) => response.text()
   });
+}
 
-  if (!response.ok) {
-    throw new Error(`JMA request failed: ${response.status} ${response.statusText}`);
-  }
+async function fetchCached(url, options) {
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : DEFAULT_REQUEST_TTL_MS;
+  const cacheKey = `${options.accept}:${url}`;
+  const now = Date.now();
+  const cached = requestCache.get(cacheKey);
+  if (ttlMs > 0 && cached && cached.expiresAt > now) return cached.value;
 
-  return response.text();
+  const inFlight = inFlightRequests.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const request = fetch(url, {
+    cache: options.cache ?? "default",
+    headers: {
+      "Accept": options.accept
+    }
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`JMA request failed: ${response.status} ${response.statusText}`);
+      }
+      return options.parse(response);
+    })
+    .then((value) => {
+      if (ttlMs > 0) {
+        requestCache.set(cacheKey, {
+          value,
+          expiresAt: Date.now() + ttlMs
+        });
+      }
+      return value;
+    })
+    .finally(() => {
+      inFlightRequests.delete(cacheKey);
+    });
+
+  inFlightRequests.set(cacheKey, request);
+  return request;
 }
 
 export function parseJmaTime(value) {

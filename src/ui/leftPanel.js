@@ -127,6 +127,7 @@ function buildDescription(tab, state) {
     if (state.status === "loading") return "市区町村ごとの警報・注意報を取得中です。";
     if (state.status === "error") return "警報・注意報データを取得できませんでした。";
     if (state.data?.activeWarningView === "kikikuru") {
+      if (state.data?.kikikuru?.deferred) return "キキクルのタイルを取得中です。";
       if (state.data?.kikikuru?.unavailable) return "キキクルのタイルを取得できませんでした。";
       const layerLabel = KIKIKURU_LAYER_OPTIONS.find((element) => element.id === state.data?.activeKikikuruLayer)?.label ?? "キキクル";
       return `${layerLabel}を地図上に重ねて表示しています。`;
@@ -524,6 +525,12 @@ function renderEarlyWarningDetails(root, state) {
   const groups = state.data?.earlyWarnings?.groups ?? [];
   const areas = state.data?.earlyWarnings?.areas ?? [];
   const municipalityAreas = state.data?.earlyWarnings?.municipalityAreas ?? [];
+
+  if (!state.data?.detailsLoaded) {
+    root.innerHTML = `<div class="warning-empty">取得中...</div>`;
+    activeWarningAreasByCode = new Map();
+    return;
+  }
 
   if (groups.length === 0) {
     root.innerHTML = `<div class="warning-empty">早期注意情報は発表されていません</div>`;

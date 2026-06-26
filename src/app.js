@@ -8,7 +8,7 @@ import { setupSettingsModal } from "./ui/settingsModal.js";
 import { startClock } from "./ui/time.js";
 import { fetchRadarTimes } from "./jma/radar.js";
 import { fetchAmedasLatestTime } from "./jma/amedas.js";
-import { fetchWarningMap } from "./jma/warnings.js";
+import { fetchWarningDetails, fetchWarningMap } from "./jma/warnings.js";
 import { fetchTyphoonList } from "./jma/typhoon.js";
 import { fetchKikikuruTiles } from "./jma/kikikuru.js";
 import { resolveCurrentLocationInfo } from "./location/currentLocation.js";
@@ -20,9 +20,17 @@ const loaders = {
   typhoon: fetchTyphoonList
 };
 
-async function fetchWarningTabData() {
+async function fetchWarningTabData(options = {}) {
+  const includeDetails = Boolean(options.includeDetails);
+  if (!includeDetails) {
+    return {
+      ...await fetchWarningMap({ includeDetails: false }),
+      kikikuru: { unavailable: true, deferred: true }
+    };
+  }
+
   const [warningResult, kikikuruResult] = await Promise.allSettled([
-    fetchWarningMap(),
+    fetchWarningDetails(),
     fetchKikikuruTiles()
   ]);
 
@@ -52,21 +60,30 @@ export function createWeatherApp() {
   let lastAutoRefreshStartedAt = 0;
   let tabControls = null;
   let currentLocationInfo = { status: "idle" };
+  const loadRequestsByTab = new Map();
+  let warningDetailsRequest = null;
+  let backgroundPrefetchStarted = false;
 
   async function selectTab(tabId) {
     const tab = TABS.find((item) => item.id === tabId) ?? TABS[0];
     activeTab = tab.id;
     tabControls?.setActiveButton(tab.id);
     if (tab.id !== "radar") stopRadarPlayback();
-    updateLeftPanel(tab, {
-      status: "loading",
-      amedasMetric: activeAmedasMetric,
-      warningView: activeWarningView,
-      activeKikikuruLayer,
-      radarPlaying: Boolean(radarPlayTimer),
-      currentLocation: currentLocationInfo
-    });
     weatherMap?.setMode(tab.id);
+
+    const cachedData = latestDataByTab[tab.id];
+    if (cachedData) {
+      updateCurrentView(tab, cachedData);
+    } else {
+      updateLeftPanel(tab, {
+        status: "loading",
+        amedasMetric: activeAmedasMetric,
+        warningView: activeWarningView,
+        activeKikikuruLayer,
+        radarPlaying: Boolean(radarPlayTimer),
+        currentLocation: currentLocationInfo
+      });
+    }
 
     const requestId = ++activeLoadRequestId;
     try {
@@ -74,6 +91,8 @@ export function createWeatherApp() {
       if (requestId !== activeLoadRequestId || activeTab !== tab.id) return;
       latestDataByTab[tab.id] = data;
       updateCurrentView(tab, data);
+      if (tab.id === "warnings") scheduleWarningDetailsRefresh();
+      scheduleBackgroundPrefetch(tab.id);
     } catch (error) {
       if (requestId !== activeLoadRequestId || activeTab !== tab.id) return;
       console.warn(`[Weather Viewer] ${tab.id} load failed`, error);
@@ -102,6 +121,7 @@ export function createWeatherApp() {
       if (activeTab !== "warnings") return;
       const tab = TABS.find((item) => item.id === "warnings");
       updateCurrentView(tab, latestDataByTab.warnings);
+      if (activeWarningView === "early") refreshWarningDetails();
       return;
     }
 
@@ -110,6 +130,7 @@ export function createWeatherApp() {
       if (activeTab !== "warnings") return;
       const tab = TABS.find((item) => item.id === "warnings");
       updateCurrentView(tab, latestDataByTab.warnings);
+      refreshWarningDetails();
       return;
     }
 
@@ -122,6 +143,7 @@ export function createWeatherApp() {
     if (activeTab !== "warnings") return;
     const tab = TABS.find((item) => item.id === "warnings");
     updateCurrentView(tab, latestDataByTab.warnings);
+    refreshWarningDetails();
   }
 
   function selectTyphoon(typhoonId) {
@@ -250,7 +272,16 @@ export function createWeatherApp() {
   }
 
   async function loadTabData(tabId) {
-    return loaders[tabId]?.();
+    if (!loaders[tabId]) return null;
+    const inFlight = loadRequestsByTab.get(tabId);
+    if (inFlight) return inFlight;
+
+    const request = loaders[tabId]()
+      .finally(() => {
+        loadRequestsByTab.delete(tabId);
+      });
+    loadRequestsByTab.set(tabId, request);
+    return request;
   }
 
   async function refreshActiveTab({ force = false } = {}) {
@@ -268,6 +299,7 @@ export function createWeatherApp() {
       if (activeTab !== tab.id) return;
       latestDataByTab[tab.id] = mergeRefreshedData(tab.id, latestDataByTab[tab.id], nextData);
       updateCurrentView(tab, latestDataByTab[tab.id]);
+      if (tab.id === "warnings") scheduleWarningDetailsRefresh();
     } catch (error) {
       console.warn(`[Weather Viewer] ${tab.id} auto refresh failed`, error);
     } finally {
@@ -357,6 +389,64 @@ export function createWeatherApp() {
     window.addEventListener("focus", () => refreshActiveTab());
   }
 
+  function scheduleBackgroundPrefetch(excludeTabId) {
+    if (backgroundPrefetchStarted) return;
+    backgroundPrefetchStarted = true;
+
+    const run = () => {
+      TABS
+        .filter((tab) => tab.id !== excludeTabId && loaders[tab.id])
+        .forEach((tab, index) => {
+          window.setTimeout(() => {
+            prefetchTabData(tab.id);
+          }, index * 600);
+        });
+    };
+
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(run, { timeout: 2500 });
+    } else {
+      window.setTimeout(run, 1200);
+    }
+  }
+
+  async function prefetchTabData(tabId) {
+    if (latestDataByTab[tabId] || document.hidden) return;
+    try {
+      latestDataByTab[tabId] = await loadTabData(tabId);
+    } catch (error) {
+      console.warn(`[Weather Viewer] ${tabId} prefetch failed`, error);
+    }
+  }
+
+  function scheduleWarningDetailsRefresh() {
+    if (latestDataByTab.warnings?.detailsLoaded || warningDetailsRequest) return;
+    window.setTimeout(() => {
+      refreshWarningDetails();
+    }, 300);
+  }
+
+  async function refreshWarningDetails() {
+    if (warningDetailsRequest) return warningDetailsRequest;
+    warningDetailsRequest = fetchWarningTabData({ includeDetails: true })
+      .then((detailsData) => {
+        latestDataByTab.warnings = mergeWarningTabData(latestDataByTab.warnings, detailsData);
+        if (activeTab === "warnings") {
+          const tab = TABS.find((item) => item.id === "warnings");
+          updateCurrentView(tab, latestDataByTab.warnings);
+        }
+        return latestDataByTab.warnings;
+      })
+      .catch((error) => {
+        console.warn("[Weather Viewer] warning detail load failed", error);
+        return latestDataByTab.warnings;
+      })
+      .finally(() => {
+        warningDetailsRequest = null;
+      });
+    return warningDetailsRequest;
+  }
+
   function start() {
     weatherMap = createWeatherMap("map");
     weatherMap.initialize();
@@ -427,6 +517,7 @@ function getLaunchOptions() {
 }
 
 function mergeRefreshedData(tabId, currentData, nextData) {
+  if (tabId === "warnings") return mergeWarningTabData(currentData, nextData);
   if (tabId !== "radar" || !currentData?.frames?.length || !nextData?.frames?.length) return nextData;
 
   const currentIndex = clampIndex(currentData.activeFrameIndex, currentData.frames);
@@ -448,6 +539,27 @@ function mergeRefreshedData(tabId, currentData, nextData) {
     activeFrameIndex: sameFrameIndex >= 0
       ? sameFrameIndex
       : clampIndex(currentIndex, nextData.frames)
+  };
+}
+
+function mergeWarningTabData(currentData, nextData = {}) {
+  if (!currentData) return nextData;
+  if (nextData.detailsLoaded) {
+    return {
+      ...currentData,
+      ...nextData,
+      kikikuru: nextData.kikikuru ?? currentData.kikikuru
+    };
+  }
+
+  return {
+    ...currentData,
+    ...nextData,
+    earlyWarnings: currentData.earlyWarnings ?? nextData.earlyWarnings,
+    earlyAreas: currentData.earlyAreas ?? nextData.earlyAreas,
+    earlyMunicipalityAreas: currentData.earlyMunicipalityAreas ?? nextData.earlyMunicipalityAreas,
+    kikikuru: currentData.kikikuru ?? nextData.kikikuru,
+    detailsLoaded: Boolean(currentData.detailsLoaded || nextData.detailsLoaded)
   };
 }
 
