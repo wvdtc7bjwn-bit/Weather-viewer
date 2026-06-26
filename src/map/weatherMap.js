@@ -830,6 +830,12 @@ function computeGeometryBounds(geometry) {
 function updateWarningMunicipalityPaint(map, mode, data = {}) {
   if (!map?.getLayer(WARNING_OVERLAY_LAYER_ID)) return;
 
+  if (mode !== "warnings" || data?.activeWarningView === "kikikuru") {
+    map.setPaintProperty(WARNING_OVERLAY_LAYER_ID, "fill-opacity", 0);
+    updateWarningHatchPaint(map, []);
+    return;
+  }
+
   const activeAreas = getActiveWarningOverlayAreas(mode, data);
   void updateWarningMunicipalitySource(map, activeAreas);
 

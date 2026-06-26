@@ -21,6 +21,7 @@ const loaders = {
 };
 
 const KIKIKURU_DATA_TTL_MS = 60 * 1000;
+const WARNING_DETAILS_TTL_MS = 60 * 1000;
 
 async function fetchWarningTabData(options = {}) {
   const includeDetails = Boolean(options.includeDetails);
@@ -54,6 +55,8 @@ export function createWeatherApp() {
   let warningDetailsRequest = null;
   let warningKikikuruRequest = null;
   let warningDetailsTimer = null;
+  let warningFullRefreshTimer = null;
+  let warningDetailsLoadedAt = 0;
   let warningKikikuruLoadedAt = 0;
   let backgroundPrefetchStarted = false;
 
@@ -64,9 +67,15 @@ export function createWeatherApp() {
     if (tab.id !== "radar") stopRadarPlayback();
     weatherMap?.setMode(tab.id);
 
+    const requestId = ++activeLoadRequestId;
     const cachedData = latestDataByTab[tab.id];
     if (cachedData) {
       updateCurrentView(tab, cachedData);
+      if (tab.id === "warnings") {
+        queueWarningFullRefresh({ delayMs: 700 });
+        scheduleBackgroundPrefetch(tab.id);
+        return;
+      }
     } else {
       updateLeftPanel(tab, {
         status: "loading",
@@ -78,13 +87,12 @@ export function createWeatherApp() {
       });
     }
 
-    const requestId = ++activeLoadRequestId;
     try {
       const data = await loadTabData(tab.id);
       if (requestId !== activeLoadRequestId || activeTab !== tab.id) return;
       latestDataByTab[tab.id] = data;
       updateCurrentView(tab, data);
-      if (tab.id === "warnings") refreshAllWarningData();
+      if (tab.id === "warnings") queueWarningFullRefresh({ delayMs: 350 });
       scheduleBackgroundPrefetch(tab.id);
     } catch (error) {
       if (requestId !== activeLoadRequestId || activeTab !== tab.id) return;
@@ -294,7 +302,7 @@ export function createWeatherApp() {
       if (activeTab !== tab.id) return;
       latestDataByTab[tab.id] = mergeRefreshedData(tab.id, latestDataByTab[tab.id], nextData);
       updateCurrentView(tab, latestDataByTab[tab.id]);
-      if (tab.id === "warnings") await refreshAllWarningData({ force: true });
+      if (tab.id === "warnings") queueWarningFullRefresh({ force: true, delayMs: 0 });
     } catch (error) {
       console.warn(`[Weather Viewer] ${tab.id} auto refresh failed`, error);
     } finally {
@@ -429,17 +437,30 @@ export function createWeatherApp() {
     warningDetailsTimer = null;
   }
 
+  function queueWarningFullRefresh({ force = false, delayMs = 0 } = {}) {
+    if (warningFullRefreshTimer) {
+      window.clearTimeout(warningFullRefreshTimer);
+      warningFullRefreshTimer = null;
+    }
+    warningFullRefreshTimer = window.setTimeout(() => {
+      warningFullRefreshTimer = null;
+      if (activeTab !== "warnings") return;
+      refreshAllWarningData({ force });
+    }, delayMs);
+  }
+
   async function refreshWarningDetails() {
     return refreshWarningDetailsData();
   }
 
   async function refreshWarningDetailsData({ force = false } = {}) {
-    if (!force && latestDataByTab.warnings?.detailsLoaded) return latestDataByTab.warnings;
+    if (!force && hasFreshWarningDetails(latestDataByTab.warnings, warningDetailsLoadedAt)) return latestDataByTab.warnings;
     if (warningDetailsRequest) return warningDetailsRequest;
     cancelScheduledWarningDetailsRefresh();
     warningDetailsRequest = fetchWarningTabData({ includeDetails: true })
       .then((detailsData) => {
         latestDataByTab.warnings = mergeWarningTabData(latestDataByTab.warnings, detailsData);
+        warningDetailsLoadedAt = Date.now();
         refreshWarningsView();
         return latestDataByTab.warnings;
       })
@@ -542,6 +563,14 @@ function hasFreshKikikuruData(kikikuru, loadedAt) {
     !kikikuru.deferred &&
     !kikikuru.unavailable &&
     Date.now() - loadedAt < KIKIKURU_DATA_TTL_MS
+  );
+}
+
+function hasFreshWarningDetails(warningData, loadedAt) {
+  return Boolean(
+    warningData?.detailsLoaded &&
+    loadedAt > 0 &&
+    Date.now() - loadedAt < WARNING_DETAILS_TTL_MS
   );
 }
 
