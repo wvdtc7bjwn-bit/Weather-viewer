@@ -12,6 +12,8 @@ import { NO_TYPHOON_MESSAGE } from "../jma/typhoon.js";
 let selectedWarningAreaCode = "";
 let amedasRankingOrder = "top";
 let activeWarningAreasByCode = new Map();
+let activeWarningDetailsLoaded = false;
+let warningAreaSelectionOptions = {};
 
 const AMEDAS_RANKING_LIMIT = 20;
 
@@ -321,7 +323,8 @@ function renderTyphoonSelector(tab, state) {
   }).join("");
 }
 
-export function setupWarningAreaSelection() {
+export function setupWarningAreaSelection(options = {}) {
+  warningAreaSelectionOptions = options;
   const root = document.getElementById("warning-detail-list");
   if (!root) return;
 
@@ -367,7 +370,10 @@ function selectWarningArea(areaCode, { scroll, openModal } = {}) {
   if (!row) return;
 
   row.classList.add("selected");
-  if (openModal) openWarningModal(selectedWarningAreaCode);
+  if (openModal) {
+    warningAreaSelectionOptions.onDetailRequest?.(selectedWarningAreaCode);
+    openWarningModal(selectedWarningAreaCode);
+  }
   if (!scroll) return;
 
   const rootRect = root.getBoundingClientRect();
@@ -474,6 +480,7 @@ function renderWarningDetails(tab, state, warningView = "status") {
   if (!isWarnings) {
     root.innerHTML = "";
     activeWarningAreasByCode = new Map();
+    activeWarningDetailsLoaded = false;
     closeWarningModal();
     return;
   }
@@ -481,24 +488,29 @@ function renderWarningDetails(tab, state, warningView = "status") {
   if (state.status === "loading") {
     root.innerHTML = `<div class="warning-empty">取得中...</div>`;
     activeWarningAreasByCode = new Map();
+    activeWarningDetailsLoaded = false;
     return;
   }
 
   if (state.status === "error") {
     root.innerHTML = `<div class="warning-empty">取得失敗</div>`;
     activeWarningAreasByCode = new Map();
+    activeWarningDetailsLoaded = false;
     return;
   }
 
   if (warningView === "early") {
+    activeWarningDetailsLoaded = Boolean(state.data?.detailsLoaded);
     renderEarlyWarningDetails(root, state);
     return;
   }
 
+  activeWarningDetailsLoaded = Boolean(state.data?.detailsLoaded);
   const groups = state.data?.groups ?? [];
   if (groups.length === 0) {
     root.innerHTML = `<div class="warning-empty">発表中の警報・注意報はありません</div>`;
     activeWarningAreasByCode = new Map();
+    refreshOpenWarningModal();
     return;
   }
 
@@ -519,6 +531,7 @@ function renderWarningDetails(tab, state, warningView = "status") {
       </article>
     `).join("")}
   `).join("");
+  refreshOpenWarningModal();
 }
 
 function renderEarlyWarningDetails(root, state) {
@@ -529,12 +542,14 @@ function renderEarlyWarningDetails(root, state) {
   if (!state.data?.detailsLoaded) {
     root.innerHTML = `<div class="warning-empty">取得中...</div>`;
     activeWarningAreasByCode = new Map();
+    activeWarningDetailsLoaded = false;
     return;
   }
 
   if (groups.length === 0) {
     root.innerHTML = `<div class="warning-empty">早期注意情報は発表されていません</div>`;
     activeWarningAreasByCode = new Map();
+    refreshOpenWarningModal();
     return;
   }
 
@@ -556,6 +571,7 @@ function renderEarlyWarningDetails(root, state) {
       </article>
     `).join("")}
   `).join("");
+  refreshOpenWarningModal();
 }
 
 function openWarningModal(areaCode) {
@@ -592,7 +608,7 @@ function openWarningModal(areaCode) {
     </section>
     <section class="warning-modal-section">
       <h3>今後の見通し</h3>
-      ${buildWarningOutlookTable(outlookRows)}
+      ${buildWarningOutlookTable(outlookRows, { loading: !activeWarningDetailsLoaded })}
     </section>
   `;
   modal.hidden = false;
@@ -627,9 +643,9 @@ function openEarlyWarningModal(area, modal, content) {
   document.body.classList.add("modal-open");
 }
 
-function buildWarningOutlookTable(rows) {
+function buildWarningOutlookTable(rows, options = {}) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    return `<p class="warning-modal-empty">今後の見通しはありません。</p>`;
+    return `<p class="warning-modal-empty">${options.loading ? "今後の見通しを取得中です。" : "今後の見通しはありません。"}</p>`;
   }
 
   const times = collectOutlookTableSlots(rows);
@@ -695,6 +711,12 @@ function formatEarlyProbabilityBadge(probability) {
     .map((value) => String(value ?? "").trim())
     .filter(Boolean)
     .join(" ");
+}
+
+function refreshOpenWarningModal() {
+  const modal = document.getElementById("warning-modal");
+  if (!modal || modal.hidden || !selectedWarningAreaCode) return;
+  openWarningModal(selectedWarningAreaCode);
 }
 
 function closeWarningModal() {

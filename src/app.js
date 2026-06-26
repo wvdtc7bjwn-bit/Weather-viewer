@@ -20,6 +20,8 @@ const loaders = {
   typhoon: fetchTyphoonList
 };
 
+const KIKIKURU_DATA_TTL_MS = 60 * 1000;
+
 async function fetchWarningTabData(options = {}) {
   const includeDetails = Boolean(options.includeDetails);
   if (!includeDetails) {
@@ -29,19 +31,7 @@ async function fetchWarningTabData(options = {}) {
     };
   }
 
-  const [warningResult, kikikuruResult] = await Promise.allSettled([
-    fetchWarningDetails(),
-    fetchKikikuruTiles()
-  ]);
-
-  if (warningResult.status === "rejected") throw warningResult.reason;
-
-  return {
-    ...warningResult.value,
-    kikikuru: kikikuruResult.status === "fulfilled"
-      ? kikikuruResult.value
-      : { unavailable: true, error: kikikuruResult.reason }
-  };
+  return await fetchWarningDetails();
 }
 
 export function createWeatherApp() {
@@ -62,6 +52,9 @@ export function createWeatherApp() {
   let currentLocationInfo = { status: "idle" };
   const loadRequestsByTab = new Map();
   let warningDetailsRequest = null;
+  let warningKikikuruRequest = null;
+  let warningDetailsTimer = null;
+  let warningKikikuruLoadedAt = 0;
   let backgroundPrefetchStarted = false;
 
   async function selectTab(tabId) {
@@ -122,6 +115,7 @@ export function createWeatherApp() {
       const tab = TABS.find((item) => item.id === "warnings");
       updateCurrentView(tab, latestDataByTab.warnings);
       if (activeWarningView === "early") refreshWarningDetails();
+      else scheduleWarningDetailsRefresh();
       return;
     }
 
@@ -143,7 +137,8 @@ export function createWeatherApp() {
     if (activeTab !== "warnings") return;
     const tab = TABS.find((item) => item.id === "warnings");
     updateCurrentView(tab, latestDataByTab.warnings);
-    refreshWarningDetails();
+    cancelScheduledWarningDetailsRefresh();
+    refreshKikikuruData();
   }
 
   function selectTyphoon(typhoonId) {
@@ -300,6 +295,7 @@ export function createWeatherApp() {
       latestDataByTab[tab.id] = mergeRefreshedData(tab.id, latestDataByTab[tab.id], nextData);
       updateCurrentView(tab, latestDataByTab[tab.id]);
       if (tab.id === "warnings") scheduleWarningDetailsRefresh();
+      if (tab.id === "warnings" && activeWarningView === "kikikuru") refreshKikikuruData({ force: true });
     } catch (error) {
       console.warn(`[Weather Viewer] ${tab.id} auto refresh failed`, error);
     } finally {
@@ -420,21 +416,28 @@ export function createWeatherApp() {
   }
 
   function scheduleWarningDetailsRefresh() {
-    if (latestDataByTab.warnings?.detailsLoaded || warningDetailsRequest) return;
-    window.setTimeout(() => {
+    if (latestDataByTab.warnings?.detailsLoaded || warningDetailsRequest || warningDetailsTimer) return;
+    warningDetailsTimer = window.setTimeout(() => {
+      warningDetailsTimer = null;
+      if (activeTab !== "warnings" || activeWarningView !== "status") return;
       refreshWarningDetails();
-    }, 300);
+    }, 1800);
+  }
+
+  function cancelScheduledWarningDetailsRefresh() {
+    if (!warningDetailsTimer) return;
+    window.clearTimeout(warningDetailsTimer);
+    warningDetailsTimer = null;
   }
 
   async function refreshWarningDetails() {
+    if (latestDataByTab.warnings?.detailsLoaded) return latestDataByTab.warnings;
     if (warningDetailsRequest) return warningDetailsRequest;
+    cancelScheduledWarningDetailsRefresh();
     warningDetailsRequest = fetchWarningTabData({ includeDetails: true })
       .then((detailsData) => {
         latestDataByTab.warnings = mergeWarningTabData(latestDataByTab.warnings, detailsData);
-        if (activeTab === "warnings") {
-          const tab = TABS.find((item) => item.id === "warnings");
-          updateCurrentView(tab, latestDataByTab.warnings);
-        }
+        refreshWarningsView();
         return latestDataByTab.warnings;
       })
       .catch((error) => {
@@ -447,6 +450,43 @@ export function createWeatherApp() {
     return warningDetailsRequest;
   }
 
+  async function refreshKikikuruData({ force = false } = {}) {
+    const currentKikikuru = latestDataByTab.warnings?.kikikuru;
+    if (!force && hasFreshKikikuruData(currentKikikuru, warningKikikuruLoadedAt)) return latestDataByTab.warnings;
+    if (warningKikikuruRequest) return warningKikikuruRequest;
+
+    warningKikikuruRequest = fetchKikikuruTiles()
+      .then((kikikuruData) => {
+        latestDataByTab.warnings = {
+          ...(latestDataByTab.warnings ?? {}),
+          kikikuru: kikikuruData
+        };
+        warningKikikuruLoadedAt = Date.now();
+        refreshWarningsView({ view: "kikikuru" });
+        return latestDataByTab.warnings;
+      })
+      .catch((error) => {
+        console.warn("[Weather Viewer] kikikuru tile load failed", error);
+        latestDataByTab.warnings = {
+          ...(latestDataByTab.warnings ?? {}),
+          kikikuru: { unavailable: true, error }
+        };
+        refreshWarningsView({ view: "kikikuru" });
+        return latestDataByTab.warnings;
+      })
+      .finally(() => {
+        warningKikikuruRequest = null;
+      });
+    return warningKikikuruRequest;
+  }
+
+  function refreshWarningsView(options = {}) {
+    if (activeTab !== "warnings") return;
+    if (options.view && activeWarningView !== options.view) return;
+    const tab = TABS.find((item) => item.id === "warnings");
+    updateCurrentView(tab, latestDataByTab.warnings);
+  }
+
   function start() {
     weatherMap = createWeatherMap("map");
     weatherMap.initialize();
@@ -454,7 +494,7 @@ export function createWeatherApp() {
     setupAmedasSubTabs({ onChange: selectAmedasMetric });
     setupAmedasRankingToggle({ onChange: refreshAmedasPanel });
     setupKikikuruLayerToggles({ onChange: selectKikikuruLayer });
-    setupWarningAreaSelection();
+    setupWarningAreaSelection({ onDetailRequest: () => refreshWarningDetails() });
     setupTyphoonSelector({ onChange: selectTyphoon });
     setupRadarControls({
       onSeek: selectRadarFrame,
@@ -477,6 +517,15 @@ export function createWeatherApp() {
 function getNextKikikuruLayer(currentView, currentLayer) {
   if (currentView !== "kikikuru") return currentLayer === "inund" ? "inund" : "land";
   return currentLayer === "land" ? "inund" : "land";
+}
+
+function hasFreshKikikuruData(kikikuru, loadedAt) {
+  return Boolean(
+    kikikuru?.tileUrls &&
+    !kikikuru.deferred &&
+    !kikikuru.unavailable &&
+    Date.now() - loadedAt < KIKIKURU_DATA_TTL_MS
+  );
 }
 
 function requestCurrentPosition() {
