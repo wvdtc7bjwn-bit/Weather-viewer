@@ -4,14 +4,16 @@ import { setupTabs } from "./ui/tabs.js";
 import { setupAmedasRankingToggle, setupAmedasSubTabs, setupKikikuruLayerToggles, setupRadarControls, setupTyphoonSelector, setupWarningAreaSelection, updateLeftPanel } from "./ui/leftPanel.js";
 import { setupLegendToggle } from "./ui/legendToggle.js";
 import { setupPanelToggle } from "./ui/panelToggle.js";
-import { setupSettingsModal } from "./ui/settingsModal.js";
+import { refreshSettingsModalView, setupSettingsModal } from "./ui/settingsModal.js";
 import { startClock } from "./ui/time.js";
 import { fetchRadarTimes } from "./jma/radar.js";
 import { fetchAmedasLatestTime } from "./jma/amedas.js";
 import { fetchWarningDetails, fetchWarningMap } from "./jma/warnings.js";
 import { fetchTyphoonList } from "./jma/typhoon.js";
 import { fetchKikikuruTiles } from "./jma/kikikuru.js";
-import { resolveCurrentLocationInfo } from "./location/currentLocation.js";
+import { resolveCurrentLocationInfo, searchMunicipalities } from "./location/currentLocation.js";
+import { addMyArea, getMyAreaLimit, loadMyAreas, removeMyArea } from "./location/myAreas.js";
+import { buildLocationRadarTimeline } from "./location/radarTimeline.js";
 
 const loaders = {
   radar: fetchRadarTimes,
@@ -22,6 +24,13 @@ const loaders = {
 
 const KIKIKURU_DATA_TTL_MS = 60 * 1000;
 const WARNING_DETAILS_TTL_MS = 60 * 1000;
+const LOCATION_WATCH_OPTIONS = {
+  enableHighAccuracy: false,
+  timeout: 20000,
+  maximumAge: 60 * 1000
+};
+const LOCATION_RESOLVE_MIN_DISTANCE_METERS = 250;
+const LOCATION_RESOLVE_MIN_INTERVAL_MS = 60 * 1000;
 
 async function fetchWarningTabData(options = {}) {
   const includeDetails = Boolean(options.includeDetails);
@@ -51,6 +60,12 @@ export function createWeatherApp() {
   let lastAutoRefreshStartedAt = 0;
   let tabControls = null;
   let currentLocationInfo = { status: "idle" };
+  let myAreas = loadMyAreas();
+  let locationRadarTimeline = { status: "idle", points: [] };
+  let locationRadarRequestId = 0;
+  let locationWatchId = null;
+  let locationResolveRequestId = 0;
+  let lastResolvedLocation = null;
   const loadRequestsByTab = new Map();
   let warningDetailsRequest = null;
   let warningKikikuruRequest = null;
@@ -83,7 +98,9 @@ export function createWeatherApp() {
         warningView: activeWarningView,
         activeKikikuruLayer,
         radarPlaying: Boolean(radarPlayTimer),
-        currentLocation: currentLocationInfo
+        currentLocation: currentLocationInfo,
+        myAreas,
+        locationInsights: buildLocationInsights(tab.id, null)
       });
     }
 
@@ -104,7 +121,9 @@ export function createWeatherApp() {
         warningView: activeWarningView,
         activeKikikuruLayer,
         radarPlaying: Boolean(radarPlayTimer),
-        currentLocation: currentLocationInfo
+        currentLocation: currentLocationInfo,
+        myAreas,
+        locationInsights: buildLocationInsights(tab.id, null)
       });
     }
   }
@@ -158,6 +177,7 @@ export function createWeatherApp() {
 
   function updateCurrentView(tab, data) {
     const displayData = buildDisplayData(tab, data);
+    if (tab.id === "radar") ensureLocationRadarTimeline(displayData);
     updateLeftPanel(tab, {
       status: "ok",
       data: displayData,
@@ -165,7 +185,9 @@ export function createWeatherApp() {
       warningView: activeWarningView,
       activeKikikuruLayer,
       radarPlaying: Boolean(radarPlayTimer),
-      currentLocation: currentLocationInfo
+      currentLocation: currentLocationInfo,
+      myAreas,
+      locationInsights: buildLocationInsights(tab.id, displayData)
     });
     weatherMap?.renderData(tab.id, displayData);
   }
@@ -208,6 +230,108 @@ export function createWeatherApp() {
       latestTime: selected.updatedAt ?? data.latestTime,
       updatedAt: selected.updatedAt ?? data.updatedAt
     };
+  }
+
+  function buildLocationInsights(tabId, data) {
+    if (tabId === "radar") {
+      return {
+        type: "radar",
+        currentLocation: getCurrentLocationTarget(),
+        timeline: locationRadarTimeline
+      };
+    }
+
+    if (tabId === "warnings") {
+      return {
+        type: "myAreas",
+        areas: buildMyAreaWarningSummaries(data ?? latestDataByTab.warnings)
+      };
+    }
+
+    return null;
+  }
+
+  function getCurrentLocationTarget() {
+    if (currentLocationInfo?.status !== "found" || !Array.isArray(currentLocationInfo.coordinates)) return null;
+    return {
+      id: "current-location",
+      kind: "current",
+      label: currentLocationInfo.areaName ? `現在地 (${currentLocationInfo.areaName})` : "現在地",
+      areaCode: currentLocationInfo.areaCode,
+      areaName: currentLocationInfo.areaName,
+      prefecture: currentLocationInfo.prefecture,
+      coordinates: currentLocationInfo.coordinates
+    };
+  }
+
+  function buildMyAreaWarningSummaries(data = {}) {
+    if (!myAreas.length) return [];
+    const activeAreaByCode = new Map((data?.activeAreas ?? []).map((area) => [String(area.areaCode), area]));
+    return myAreas.map((area) => {
+      const activeArea = activeAreaByCode.get(String(area.areaCode));
+      return {
+        ...area,
+        warnings: activeArea?.warnings ?? [],
+        updatedAt: activeArea?.updatedAt ?? data?.updatedAt ?? data?.latestTime ?? "",
+        hasWarnings: Boolean(activeArea?.warnings?.length)
+      };
+    });
+  }
+
+  function ensureLocationRadarTimeline(radarData) {
+    const current = getCurrentLocationTarget();
+    if (!current) {
+      locationRadarTimeline = { status: "idle", points: [] };
+      return;
+    }
+
+    const frames = radarData?.frames ?? [];
+    if (!frames.length) {
+      locationRadarTimeline = {
+        status: "unavailable",
+        points: [],
+        message: "雨雲時系列を表示できません。"
+      };
+      return;
+    }
+
+    const sourceKey = [
+      current.coordinates.join(","),
+      frames.map((frame) => frame.validtime ?? frame.label ?? "").join("|")
+    ].join("::");
+    if (locationRadarTimeline.sourceKey === sourceKey && locationRadarTimeline.status !== "idle") return;
+
+    const requestId = ++locationRadarRequestId;
+    locationRadarTimeline = {
+      status: "loading",
+      points: [],
+      sourceKey,
+      location: current,
+      message: "現在地周辺の雨雲を読み取っています。"
+    };
+
+    buildLocationRadarTimeline(current.coordinates, radarData)
+      .then((timeline) => {
+        if (requestId !== locationRadarRequestId) return;
+        locationRadarTimeline = {
+          ...timeline,
+          sourceKey,
+          location: current
+        };
+        if (activeTab === "radar") refreshActivePanel();
+      })
+      .catch((error) => {
+        if (requestId !== locationRadarRequestId) return;
+        console.warn("[Weather Viewer] current location radar timeline failed", error);
+        locationRadarTimeline = {
+          status: "unavailable",
+          points: [],
+          sourceKey,
+          location: current,
+          message: "現在地周辺の雨雲時系列を取得できませんでした。"
+        };
+        if (activeTab === "radar") refreshActivePanel();
+      });
   }
 
   function selectRadarFrame(index) {
@@ -316,11 +440,13 @@ export function createWeatherApp() {
         status: "error",
         message: "このブラウザでは位置情報を利用できません。"
       };
+      refreshSettingsModalView();
       refreshActivePanel();
       return;
     }
 
     setLocateButtonBusy(true);
+    if (locationWatchId === null) startLocationWatch();
     currentLocationInfo = {
       status: "loading",
       message: "現在地を取得中です..."
@@ -329,29 +455,108 @@ export function createWeatherApp() {
 
     try {
       const position = await requestCurrentPosition();
-      const coordinates = [position.coords.longitude, position.coords.latitude];
-      weatherMap?.showCurrentLocation(coordinates, position.coords.accuracy);
-      weatherMap?.flyToLocation(coordinates);
-
-      const warningData = latestDataByTab.warnings ?? await fetchWarningTabData();
-      latestDataByTab.warnings = warningData;
-      currentLocationInfo = await resolveCurrentLocationInfo(coordinates, warningData);
-
-      if (activeTab !== "warnings") {
-        activeTab = "warnings";
-        tabControls?.setActiveButton(activeTab);
-        stopRadarPlayback();
-        weatherMap?.setMode(activeTab);
-      }
-
-      const tab = TABS.find((item) => item.id === "warnings");
-      updateCurrentView(tab, warningData);
+      await applyCurrentPosition(position, { forceResolve: true, flyTo: true });
     } catch (error) {
       currentLocationInfo = buildCurrentLocationError(error);
+      refreshSettingsModalView();
       refreshActivePanel();
     } finally {
       setLocateButtonBusy(false);
     }
+  }
+
+  function startLocationWatch() {
+    if (!navigator.geolocation) {
+      currentLocationInfo = {
+        status: "error",
+        message: "このブラウザでは位置情報を利用できません。"
+      };
+      refreshSettingsModalView();
+      refreshActivePanel();
+      return;
+    }
+    if (locationWatchId !== null) return;
+
+    currentLocationInfo = {
+      status: "loading",
+      message: "現在地を取得中です..."
+    };
+    refreshSettingsModalView();
+    refreshActivePanel();
+
+    locationWatchId = navigator.geolocation.watchPosition(
+      (position) => {
+        applyCurrentPosition(position).catch((error) => {
+          console.warn("[Weather Viewer] current location watch update failed", error);
+        });
+      },
+      (error) => {
+        if (Number(error?.code) === 1) stopLocationWatch();
+        currentLocationInfo = buildCurrentLocationError(error);
+        refreshSettingsModalView();
+        refreshActivePanel();
+      },
+      LOCATION_WATCH_OPTIONS
+    );
+  }
+
+  async function applyCurrentPosition(position, options = {}) {
+    const coordinates = getPositionCoordinates(position);
+    if (!coordinates) {
+      currentLocationInfo = {
+        status: "error",
+        message: "現在地の座標を読み取れませんでした。"
+      };
+      refreshSettingsModalView();
+      refreshActivePanel();
+      return;
+    }
+
+    weatherMap?.showCurrentLocation(coordinates, position.coords.accuracy);
+    if (options.flyTo) weatherMap?.flyToLocation(coordinates);
+
+    if (!shouldResolveCurrentLocation(coordinates, options.forceResolve)) return;
+
+    const requestId = ++locationResolveRequestId;
+    try {
+      const warningData = latestDataByTab.warnings ?? await fetchWarningTabData();
+      if (requestId !== locationResolveRequestId) return;
+      latestDataByTab.warnings = warningData;
+      const nextInfo = await resolveCurrentLocationInfo(coordinates, warningData);
+      if (requestId !== locationResolveRequestId) return;
+      currentLocationInfo = nextInfo;
+      lastResolvedLocation = {
+        coordinates,
+        resolvedAt: Date.now()
+      };
+      resetLocationRadarTimeline();
+      refreshSettingsModalView();
+      refreshActivePanel();
+    } catch (error) {
+      if (requestId !== locationResolveRequestId) return;
+      currentLocationInfo = buildCurrentLocationError(error);
+      refreshSettingsModalView();
+      refreshActivePanel();
+    }
+  }
+
+  function shouldResolveCurrentLocation(coordinates, forceResolve = false) {
+    if (forceResolve || !lastResolvedLocation) return true;
+
+    const movedMeters = getDistanceMeters(lastResolvedLocation.coordinates, coordinates);
+    const elapsedMs = Date.now() - lastResolvedLocation.resolvedAt;
+    return movedMeters >= LOCATION_RESOLVE_MIN_DISTANCE_METERS || elapsedMs >= LOCATION_RESOLVE_MIN_INTERVAL_MS;
+  }
+
+  function resetLocationRadarTimeline() {
+    locationRadarRequestId += 1;
+    locationRadarTimeline = { status: "idle", points: [] };
+  }
+
+  function stopLocationWatch() {
+    if (locationWatchId === null || !navigator.geolocation?.clearWatch) return;
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
   }
 
   function refreshActivePanel() {
@@ -368,7 +573,9 @@ export function createWeatherApp() {
       warningView: activeWarningView,
       activeKikikuruLayer,
       radarPlaying: Boolean(radarPlayTimer),
-      currentLocation: currentLocationInfo
+      currentLocation: currentLocationInfo,
+      myAreas,
+      locationInsights: buildLocationInsights(tab.id, null)
     });
   }
 
@@ -525,6 +732,40 @@ export function createWeatherApp() {
     updateCurrentView(tab, latestDataByTab.warnings);
   }
 
+  function getSettingsState() {
+    return {
+      myAreas,
+      currentLocation: currentLocationInfo,
+      myAreaLimit: getMyAreaLimit()
+    };
+  }
+
+  async function searchSettingsAreas(query) {
+    return searchMunicipalities(query);
+  }
+
+  function addSettingsMyArea(area) {
+    myAreas = addMyArea(myAreas, area);
+    refreshSettingsModalView();
+    refreshActivePanel();
+  }
+
+  function addCurrentLocationToMyAreas() {
+    if (currentLocationInfo?.status !== "found" || !currentLocationInfo.areaCode) return;
+    addSettingsMyArea({
+      areaCode: currentLocationInfo.areaCode,
+      areaName: currentLocationInfo.areaName,
+      prefecture: currentLocationInfo.prefecture,
+      coordinates: currentLocationInfo.coordinates ?? currentLocationInfo.center
+    });
+  }
+
+  function removeSettingsMyArea(areaCode) {
+    myAreas = removeMyArea(myAreas, areaCode);
+    refreshSettingsModalView();
+    refreshActivePanel();
+  }
+
   function start() {
     weatherMap = createWeatherMap("map");
     weatherMap.initialize();
@@ -542,10 +783,17 @@ export function createWeatherApp() {
     });
     setupLegendToggle();
     setupPanelToggle({ onLayoutChange: () => weatherMap?.resize() });
-    setupSettingsModal();
+    setupSettingsModal({
+      getState: getSettingsState,
+      onSearchArea: searchSettingsAreas,
+      onAddArea: addSettingsMyArea,
+      onAddCurrentLocation: addCurrentLocationToMyAreas,
+      onRemoveArea: removeSettingsMyArea
+    });
     document.getElementById("locate-button")?.addEventListener("click", locateCurrentPosition);
     startClock("clock");
     startAutoRefresh();
+    startLocationWatch();
     selectTab(activeTab);
   }
 
@@ -576,12 +824,32 @@ function hasFreshWarningDetails(warningData, loadedAt) {
 
 function requestCurrentPosition() {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 12000,
-      maximumAge: 60 * 1000
-    });
+    navigator.geolocation.getCurrentPosition(resolve, reject, LOCATION_WATCH_OPTIONS);
   });
+}
+
+function getPositionCoordinates(position) {
+  const longitude = Number(position?.coords?.longitude);
+  const latitude = Number(position?.coords?.latitude);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+  return [longitude, latitude];
+}
+
+function getDistanceMeters(from, to) {
+  if (!Array.isArray(from) || !Array.isArray(to)) return Number.POSITIVE_INFINITY;
+  const [fromLon, fromLat] = from.map(Number);
+  const [toLon, toLat] = to.map(Number);
+  if (![fromLon, fromLat, toLon, toLat].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
+
+  const earthRadiusMeters = 6371000;
+  const toRadians = (value) => value * Math.PI / 180;
+  const dLat = toRadians(toLat - fromLat);
+  const dLon = toRadians(toLon - fromLon);
+  const lat1 = toRadians(fromLat);
+  const lat2 = toRadians(toLat);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function buildCurrentLocationError(error) {

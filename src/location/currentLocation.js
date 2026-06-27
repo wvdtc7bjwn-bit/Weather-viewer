@@ -13,6 +13,7 @@ export async function resolveCurrentLocationInfo(coordinates, warningData = {}) 
       areaCode: "",
       areaName: "",
       prefecture: "",
+      center: null,
       warnings: [],
       message: "現在地の市区町村を特定できませんでした。"
     };
@@ -27,6 +28,7 @@ export async function resolveCurrentLocationInfo(coordinates, warningData = {}) 
     areaCode: municipality.code,
     areaName: municipality.name,
     prefecture: activeArea?.prefecture ?? getPrefectureNameByCode(municipality.code),
+    center: municipality.center,
     warnings: activeArea?.warnings ?? [],
     updatedAt: activeArea?.updatedAt ?? warningData.updatedAt ?? warningData.latestTime ?? "",
     message: activeArea?.warnings?.length
@@ -35,7 +37,7 @@ export async function resolveCurrentLocationInfo(coordinates, warningData = {}) 
   };
 }
 
-async function findMunicipalityForPoint(lng, lat) {
+export async function findMunicipalityForPoint(lng, lat) {
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
   const municipalities = await loadMunicipalityLookup();
   return municipalities.find((item) =>
@@ -44,21 +46,52 @@ async function findMunicipalityForPoint(lng, lat) {
   ) ?? null;
 }
 
-async function loadMunicipalityLookup() {
+export async function searchMunicipalities(query, limit = 12) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return [];
+  const municipalities = await loadMunicipalityLookup();
+  return municipalities
+    .filter((item) => {
+      const haystack = normalizeSearchText(`${item.prefecture} ${item.name} ${item.code}`);
+      return haystack.includes(normalizedQuery);
+    })
+    .slice(0, limit)
+    .map((item) => ({
+      areaCode: item.code,
+      areaName: item.name,
+      prefecture: item.prefecture,
+      coordinates: item.center
+    }));
+}
+
+export async function loadMunicipalityLookup() {
   if (!municipalityLookupPromise) {
     municipalityLookupPromise = fetch(JMA_ENDPOINTS.warningMunicipalities)
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       })
-      .then((geoJson) => (geoJson.features ?? []).map((feature) => ({
-        code: String(feature?.properties?.code ?? ""),
-        name: feature?.properties?.name ?? feature?.properties?.regionName ?? "",
-        geometry: feature.geometry,
-        bounds: computeBounds(feature.geometry)
-      })).filter((item) => item.code && item.geometry));
+      .then((geoJson) => (geoJson.features ?? []).map((feature) => {
+        const code = String(feature?.properties?.code ?? "");
+        const bounds = computeBounds(feature.geometry);
+        return {
+          code,
+          name: feature?.properties?.name ?? feature?.properties?.regionName ?? "",
+          prefecture: getPrefectureNameByCode(code),
+          geometry: feature.geometry,
+          bounds,
+          center: computeRepresentativeCenter(feature.geometry, bounds)
+        };
+      }).filter((item) => item.code && item.geometry));
   }
   return municipalityLookupPromise;
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, "");
 }
 
 function isPointInBounds(lng, lat, bounds) {
@@ -121,6 +154,32 @@ function computeBounds(geometry) {
   });
 
   return Number.isFinite(bounds.minLng) ? bounds : null;
+}
+
+function computeRepresentativeCenter(geometry, bounds) {
+  const points = [];
+  walkCoordinates(geometry?.coordinates, (coord) => {
+    const lng = Number(coord[0]);
+    const lat = Number(coord[1]);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) points.push([lng, lat]);
+  });
+
+  if (points.length) {
+    const sums = points.reduce((acc, [lng, lat]) => {
+      acc.lng += lng;
+      acc.lat += lat;
+      return acc;
+    }, { lng: 0, lat: 0 });
+    return [sums.lng / points.length, sums.lat / points.length];
+  }
+
+  if (bounds) {
+    return [
+      (bounds.minLng + bounds.maxLng) / 2,
+      (bounds.minLat + bounds.maxLat) / 2
+    ];
+  }
+  return null;
 }
 
 function walkCoordinates(coords, visitor) {

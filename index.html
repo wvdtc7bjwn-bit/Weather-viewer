@@ -30,6 +30,7 @@
         <h1 id="panel-title" hidden></h1>
         <p id="panel-time">更新時刻を取得中...</p>
         <div id="current-location-card" class="current-location-card" hidden></div>
+        <div id="warning-location-insight-panel" class="location-insight-panel" hidden></div>
         <div id="amedas-sub-tabs" class="amedas-sub-tabs" hidden>
           <button class="amedas-sub-button active" data-amedas-metric="temperature">気温</button>
           <button class="amedas-sub-button" data-amedas-metric="precipitation">降水量</button>
@@ -52,6 +53,7 @@
             <button id="radar-next" class="radar-action-button" type="button">5分後</button>
           </div>
         </div>
+        <div id="radar-location-insight-panel" class="location-insight-panel" hidden></div>
         <p id="panel-description" class="panel-description">気象庁データを使用して雨雲、アメダス、警報・注意報、台風情報を表示します。</p>
         <div id="amedas-ranking" class="amedas-ranking" hidden></div>
       </section>
@@ -96,6 +98,18 @@
           <button class="warning-modal-close settings-modal-close" type="button" aria-label="閉じる" data-settings-modal-close>×</button>
         </header>
         <div class="settings-modal-body">
+          <section class="settings-group settings-my-area-group">
+            <div class="settings-group-title">マイエリア</div>
+            <div class="settings-my-area-head">
+              <p>保存した市区町村を、現在地と同じように警報・雨雲・台風情報の補助表示に使います。</p>
+              <span id="settings-my-area-count">0/8</span>
+            </div>
+            <button id="settings-my-area-current" class="settings-my-area-current" type="button" data-settings-add-current-location>現在地をマイエリアに追加</button>
+            <label class="settings-my-area-search-label" for="settings-my-area-search">市区町村を検索</label>
+            <input id="settings-my-area-search" class="settings-my-area-search" type="search" autocomplete="off" placeholder="例: 京都市北区、長岡市" />
+            <div id="settings-my-area-results" class="settings-my-area-results" aria-live="polite"></div>
+            <div id="settings-my-area-list" class="settings-my-area-list"></div>
+          </section>
           <section class="settings-group">
             <div class="settings-group-title">利用規約</div>
             <div class="settings-policy-copy">

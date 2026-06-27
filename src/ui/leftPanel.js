@@ -50,6 +50,7 @@ export function updateLeftPanel(tab, state = {}) {
   renderKikikuruLayerTabs(tab, warningView, activeKikikuruLayer);
   renderAmedasSubTabs(tab, amedasMetric.id);
   renderRadarControls(tab, state);
+  renderLocationInsights(tab, state.locationInsights, state.myAreas);
   renderWarningDetails(tab, state, warningView);
   renderTyphoonSelector(tab, state);
   renderTyphoonDetails(tab, state);
@@ -173,6 +174,120 @@ function buildTimeText(state) {
   }
   const value = state.data?.latestTime ?? state.data?.updatedAt ?? state.data?.summary;
   return value ? `更新時刻: ${value}` : "更新時刻: 未取得";
+}
+
+function renderLocationInsights(tab, insights, myAreas = []) {
+  const radarRoot = document.getElementById("radar-location-insight-panel");
+  const warningRoot = document.getElementById("warning-location-insight-panel");
+  hideLocationInsight(radarRoot);
+  hideLocationInsight(warningRoot);
+
+  if (!insights || !["radar", "warnings"].includes(tab.id)) {
+    return;
+  }
+
+  if (tab.id === "radar") {
+    renderRadarLocationInsight(radarRoot, insights);
+    return;
+  }
+
+  renderMyAreaWarningInsight(warningRoot, insights, myAreas);
+}
+
+function hideLocationInsight(root) {
+  if (!root) return;
+  root.hidden = true;
+  root.innerHTML = "";
+}
+
+function renderRadarLocationInsight(root, insights) {
+  const current = insights.currentLocation;
+  const timeline = insights.timeline ?? {};
+  if (!current && timeline.status !== "loading") {
+    root.hidden = true;
+    root.innerHTML = "";
+    return;
+  }
+
+  root.hidden = false;
+  root.className = "location-insight-panel location-insight-radar";
+
+  if (timeline.status === "loading") {
+    root.innerHTML = `
+      <div class="location-insight-head">
+        <span>現在地の雨雲</span>
+        <strong>読み取り中</strong>
+      </div>
+      <p>${escapeHtml(timeline.message ?? "現在地周辺の雨雲を読み取っています。")}</p>
+    `;
+    return;
+  }
+
+  if (timeline.status !== "ready" || !timeline.points?.length) {
+    root.innerHTML = `
+      <div class="location-insight-head">
+        <span>現在地の雨雲</span>
+        <strong>未取得</strong>
+      </div>
+      <p>${escapeHtml(timeline.message ?? "現在地の雨雲時系列を表示できません。")}</p>
+    `;
+    return;
+  }
+
+  const activePoints = timeline.points.filter((point) => point.available);
+  const peak = activePoints
+    .slice()
+    .sort((a, b) => Number(b.intensity ?? 0) - Number(a.intensity ?? 0))[0];
+  root.innerHTML = `
+    <div class="location-insight-head">
+      <span>現在地の雨雲</span>
+      <strong>${escapeHtml(peak?.levelLabel || "降水なし")}</strong>
+    </div>
+    <div class="location-radar-timeline" aria-label="現在地の雨雲時系列">
+      ${timeline.points.map((point) => `
+        <span
+          class="location-radar-point${point.isForecast ? " forecast" : ""}${point.intensity > 0 ? " rainy" : ""}"
+          title="${escapeHtml([point.label, point.levelLabel || "降水なし"].filter(Boolean).join(" "))}"
+          style="--point-color: ${escapeHtml(point.color || "rgba(255,255,255,0.18)")};"
+        ></span>
+      `).join("")}
+    </div>
+    <p>${escapeHtml(timeline.message ?? "")}</p>
+  `;
+}
+
+function renderMyAreaWarningInsight(root, insights, myAreas = []) {
+  const areas = insights.areas ?? [];
+  const activeAreas = areas.filter((area) => area.hasWarnings);
+  if (!myAreas.length || !activeAreas.length) {
+    root.hidden = true;
+    root.innerHTML = "";
+    return;
+  }
+
+  root.hidden = false;
+  root.className = "location-insight-panel location-insight-my-areas";
+  root.innerHTML = `
+    <div class="location-insight-head">
+      <span>マイエリア</span>
+      <strong>${activeAreas.length}件</strong>
+    </div>
+    <div class="location-my-area-list">
+      ${activeAreas.map((area) => `
+        <article class="location-my-area-item">
+          <div>
+            <strong>${escapeHtml(area.areaName)}</strong>
+            <span>${escapeHtml(area.prefecture ?? "")}</span>
+          </div>
+          <div class="location-my-area-badges">
+            ${(area.warnings ?? []).slice(0, 4).map((warning) =>
+              `<span class="warning-badge warning-badge-${escapeHtml(warning.level)}">${escapeHtml(warning.label)}</span>`
+            ).join("")}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderLegend(tabId, amedasMetricId, warningView = "status") {
