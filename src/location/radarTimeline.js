@@ -36,7 +36,7 @@ export async function buildLocationRadarTimeline(coordinates, radarData = {}) {
     availableCount,
     rainyCount,
     message: availableCount > 0
-      ? (rainyCount > 0 ? "現在地周辺の降水強度を時系列で表示しています。" : "現在地周辺にまとまった降水は検出されていません。")
+      ? (rainyCount > 0 ? "" : "現在地周辺にまとまった降水は検出されていません。")
       : "雨雲タイルから現在地の降水強度を読み取れませんでした。"
   };
 }

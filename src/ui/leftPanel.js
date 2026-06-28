@@ -234,15 +234,8 @@ function renderRadarLocationInsight(root, insights) {
     return;
   }
 
-  const activePoints = timeline.points.filter((point) => point.available);
-  const peak = activePoints
-    .slice()
-    .sort((a, b) => Number(b.intensity ?? 0) - Number(a.intensity ?? 0))[0];
+  const message = timeline.message ? `<p>${escapeHtml(timeline.message)}</p>` : "";
   root.innerHTML = `
-    <div class="location-insight-head">
-      <span>現在地の雨雲</span>
-      <strong>${escapeHtml(peak?.levelLabel || "降水なし")}</strong>
-    </div>
     <div class="location-radar-timeline" aria-label="現在地の雨雲時系列">
       ${timeline.points.map((point) => `
         <span
@@ -252,7 +245,7 @@ function renderRadarLocationInsight(root, insights) {
         ></span>
       `).join("")}
     </div>
-    <p>${escapeHtml(timeline.message ?? "")}</p>
+    ${message}
   `;
 }
 
