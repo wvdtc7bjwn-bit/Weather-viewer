@@ -20,6 +20,7 @@ export function setupPanelToggle({ onLayoutChange } = {}) {
   }
 
   let drawerState = "peek";
+  let drawerOffset = null;
   let dragging = false;
   let startY = 0;
   let startOffset = 0;
@@ -62,6 +63,28 @@ export function setupPanelToggle({ onLayoutChange } = {}) {
     return offsets[state] ?? offsets.peek;
   }
 
+  function clampOffset(offset) {
+    const maxOffset = getSnapOffsets().peek;
+    return Math.min(maxOffset, Math.max(0, offset));
+  }
+
+  function getCurrentOffset() {
+    return drawerOffset ?? getOffsetForState(drawerState);
+  }
+
+  function updateDrawerStateFromOffset(offset) {
+    const offsets = getSnapOffsets();
+    if (offset <= 2) {
+      drawerState = "full";
+      return;
+    }
+    if (offset >= offsets.peek - 2) {
+      drawerState = "peek";
+      return;
+    }
+    drawerState = "free";
+  }
+
   function setVisibleHeight(offset) {
     const sidebarHeight = getSheetHeight();
     const visibleHeight = Math.max(0, sidebarHeight - offset);
@@ -80,45 +103,39 @@ export function setupPanelToggle({ onLayoutChange } = {}) {
       sidebar.classList.remove("drawer-middle");
       handle.setAttribute("aria-expanded", "false");
       document.documentElement.style.removeProperty("--mobile-sidebar-visible-height");
+      drawerOffset = null;
       return;
     }
 
-    const nextOffset = offset ?? getOffsetForState(drawerState);
+    const nextOffset = clampOffset(offset ?? getCurrentOffset());
     sidebar.style.transform = `translateY(${nextOffset}px)`;
-    sidebar.classList.toggle("drawer-open", drawerState === "full");
-    sidebar.classList.toggle("drawer-middle", drawerState === "middle");
-    handle.setAttribute("aria-expanded", String(drawerState !== "peek"));
+    sidebar.classList.toggle("drawer-open", nextOffset <= 2);
+    sidebar.classList.toggle("drawer-middle", nextOffset > 2 && nextOffset < getSnapOffsets().peek - 2);
+    handle.setAttribute("aria-expanded", String(nextOffset < getSnapOffsets().peek - 2));
     setVisibleHeight(nextOffset);
   }
 
   function setDrawerState(state) {
     drawerState = state;
+    drawerOffset = null;
     sidebar.style.transition = "transform 220ms ease";
     applyTransform();
     window.setTimeout(notifyLayoutChange, 230);
   }
 
-  function getNearestState(offset) {
-    const offsets = getSnapOffsets();
-    return Object.entries(offsets)
-      .sort((a, b) => Math.abs(offset - a[1]) - Math.abs(offset - b[1]))[0]?.[0] ?? "peek";
-  }
-
-  function getDirectionalState(deltaY) {
-    const states = ["full", "middle", "peek"];
-    const currentIndex = states.indexOf(drawerState);
-    if (currentIndex < 0 || Math.abs(deltaY) < 44) return null;
-    const nextIndex = deltaY > 0
-      ? Math.min(states.length - 1, currentIndex + 1)
-      : Math.max(0, currentIndex - 1);
-    return states[nextIndex];
+  function setDrawerOffset(offset, { transition = false } = {}) {
+    drawerOffset = clampOffset(offset);
+    updateDrawerStateFromOffset(drawerOffset);
+    sidebar.style.transition = transition ? "transform 160ms ease" : "none";
+    applyTransform(drawerOffset);
+    notifyLayoutChange();
   }
 
   handle.addEventListener("pointerdown", (event) => {
     if (!isMobileSheet()) return;
     dragging = true;
     startY = event.clientY;
-    startOffset = getOffsetForState(drawerState);
+    startOffset = getCurrentOffset();
     currentOffset = startOffset;
     sidebar.style.transition = "none";
     handle.setPointerCapture?.(event.pointerId);
@@ -137,8 +154,7 @@ export function setupPanelToggle({ onLayoutChange } = {}) {
     dragging = false;
     suppressClickUntil = Date.now() + 250;
     handle.releasePointerCapture?.(event.pointerId);
-    const directionalState = getDirectionalState(event.clientY - startY);
-    setDrawerState(directionalState ?? getNearestState(currentOffset));
+    setDrawerOffset(currentOffset);
   }
 
   handle.addEventListener("pointerup", finishDrag);
@@ -151,12 +167,12 @@ export function setupPanelToggle({ onLayoutChange } = {}) {
     if (!isMobileSheet()) return;
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setDrawerState(drawerState === "peek" ? "middle" : "full");
+      setDrawerOffset(getCurrentOffset() - 96, { transition: true });
       return;
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setDrawerState(drawerState === "full" ? "middle" : "peek");
+      setDrawerOffset(getCurrentOffset() + 96, { transition: true });
       return;
     }
     if (event.key !== "Enter" && event.key !== " ") return;

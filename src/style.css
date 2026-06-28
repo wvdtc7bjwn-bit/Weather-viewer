@@ -2044,6 +2044,10 @@ h2 {
     font-size: var(--type-date-size);
   }
 
+  .radar-time-controls {
+    margin-top: 10px;
+  }
+
   .warning-detail-list {
     max-height: 310px;
   }
