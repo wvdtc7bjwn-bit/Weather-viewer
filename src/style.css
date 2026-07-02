@@ -2261,15 +2261,15 @@ h2 {
     transition: none;
   }
 
-  #main-tabs[data-active-tab="amedas"]::after {
+  #main-tabs[data-active-tab="amedas"] {
     --tab-indicator-x: calc(100% + var(--tab-shell-gap));
   }
 
-  #main-tabs[data-active-tab="warnings"]::after {
+  #main-tabs[data-active-tab="warnings"] {
     --tab-indicator-x: calc(200% + var(--tab-shell-gap) + var(--tab-shell-gap));
   }
 
-  #main-tabs[data-active-tab="typhoon"]::after {
+  #main-tabs[data-active-tab="typhoon"] {
     --tab-indicator-x: calc(300% + var(--tab-shell-gap) + var(--tab-shell-gap) + var(--tab-shell-gap));
   }
 
