@@ -2176,6 +2176,7 @@ h2 {
     --tab-shell-padding: 6px;
     --tab-shell-gap: 2px;
     --tab-active-edge-inset: 0px;
+    --tab-indicator-x: 0px;
     --tab-glass-rim: rgba(214, 244, 255, 0.28);
     --tab-glass-shadow: rgba(8, 18, 46, 0.62);
     position: fixed;
@@ -2249,22 +2250,27 @@ h2 {
       0 0 20px rgba(122, 228, 255, 0.2);
     opacity: 0.96;
     pointer-events: none;
-    transform: translateX(0);
+    transform: translate3d(var(--tab-indicator-x), 0, 0);
     backdrop-filter: blur(18px) saturate(1.85) brightness(1.15);
     -webkit-backdrop-filter: blur(18px) saturate(1.85) brightness(1.15);
-    transition: transform 360ms cubic-bezier(0.18, 0.95, 0.2, 1), opacity 180ms ease;
+    transition: transform 440ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease;
+    will-change: transform;
+  }
+
+  #main-tabs.is-dragging::after {
+    transition: none;
   }
 
   #main-tabs[data-active-tab="amedas"]::after {
-    transform: translateX(calc(100% + var(--tab-shell-gap)));
+    --tab-indicator-x: calc(100% + var(--tab-shell-gap));
   }
 
   #main-tabs[data-active-tab="warnings"]::after {
-    transform: translateX(calc(200% + var(--tab-shell-gap) + var(--tab-shell-gap)));
+    --tab-indicator-x: calc(200% + var(--tab-shell-gap) + var(--tab-shell-gap));
   }
 
   #main-tabs[data-active-tab="typhoon"]::after {
-    transform: translateX(calc(300% + var(--tab-shell-gap) + var(--tab-shell-gap) + var(--tab-shell-gap)));
+    --tab-indicator-x: calc(300% + var(--tab-shell-gap) + var(--tab-shell-gap) + var(--tab-shell-gap));
   }
 
   .tab-button {
